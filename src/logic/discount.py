@@ -1,6 +1,21 @@
 import psycopg2
 
 def calculate_price(product_id, base_price):
+    if not isinstance(product_id, int):
+        print("Ошибка: product_id должен быть числом")
+        return None
+
+    if not isinstance(base_price, (int, float)):
+        print("Ошибка: base_price должен быть числом")
+        return None
+
+    if base_price <= 0:
+        print("Ошибка: цена должна быть > 0")
+        return None
+
+    conn = None
+    cursor = None
+
     try:
         conn = psycopg2.connect(
             host="localhost",
@@ -13,7 +28,10 @@ def calculate_price(product_id, base_price):
 
         cursor.execute("SELECT name FROM products WHERE product_id = %s;", (product_id,))
         name_result = cursor.fetchone()
-        product_name = name_result[0] if name_result else "Товар не найден"
+        if name_result is None:
+            print("Ошибка: товар не найден")
+            return None
+        product_name = name_result[0]
         
         query = """
             SELECT COUNT(*) 
@@ -25,9 +43,6 @@ def calculate_price(product_id, base_price):
         cursor.execute(query, (product_id,))
         orders_count = cursor.fetchone()[0]
         
-        cursor.close()
-        conn.close()
-
         base_price = float(base_price)
         
         if orders_count == 0:
@@ -43,9 +58,19 @@ def calculate_price(product_id, base_price):
         
     except psycopg2.Error as e:
         print(f"Ошибка БД: {e}")
-        return (None, None)
+        return None
+    except Exception as e:
+        print(f"Неизвестная ошибка: {e}")
+        return None
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
-# Тестовый запуск
 if __name__ == "__main__":
-    result = calculate_price(1, 34990)
-    print("Результат работы функции (кортеж):", result)
+    calculate_price("abc", 1000)
+    calculate_price(1, "abc")
+    calculate_price(1, -100)
+    calculate_price(1, None)
+    calculate_price(99999, 1000)

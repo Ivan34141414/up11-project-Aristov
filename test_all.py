@@ -1,5 +1,5 @@
 import psycopg2
-from discount import calculate_price
+from logic.discount import calculate_price
 
 conn = psycopg2.connect(
     host="localhost",
