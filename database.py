@@ -27,6 +27,22 @@ class Database:
         if self.connection_pool:
             self.connection_pool.closeall()
 
+    def get_products(self):
+        conn = self.get_connection()
+        if not conn:
+            return []
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT product_id, name, price FROM products;")
+            products = cursor.fetchall()
+            cursor.close()
+            return products
+        except psycopg2.Error as e:
+            print(f"Ошибка запроса: {e}")
+            return []
+        finally:
+            self.release_connection(conn)
+
     def execute_query(self, sql, params=None):
         conn = self.get_connection()
         if not conn:
@@ -60,6 +76,3 @@ class Database:
             return False
         finally:
             self.release_connection(conn)
-
-    def get_products(self):
-        return self.execute_query("SELECT product_id, name, price FROM products;")
