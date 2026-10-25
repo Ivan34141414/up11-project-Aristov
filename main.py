@@ -28,6 +28,11 @@ class MainWindow(QMainWindow):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
+        version = QLabel("Версия v1.0")
+        version.setStyleSheet("font-size: 14px; color: gray; margin-top: 10px;")
+        version.setAlignment(Qt.AlignCenter)
+        layout.addWidget(version)
+
         layout.addStretch()
 
         central_widget.setLayout(layout)
