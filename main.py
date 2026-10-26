@@ -1,4 +1,5 @@
 import sys
+import os
 from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
@@ -10,8 +11,14 @@ def create_card(product):
     card_layout = QHBoxLayout()
 
     image_label = QLabel()
-    if product[7]:
-        pixmap = QPixmap(f"resources/{product[7]}")
+    image_path_from_db = product[6]
+    
+    if image_path_from_db:
+        full_path = os.path.join("resources", image_path_from_db)
+        if os.path.exists(full_path):
+            pixmap = QPixmap(full_path)
+        else:
+            pixmap = QPixmap("resources/picture.png")
     else:
         pixmap = QPixmap("resources/picture.png")
         
@@ -34,18 +41,18 @@ def create_card(product):
     category_label = QLabel(f"Категория: {category}")
     text_layout.addWidget(category_label)
 
-    quantity = product[8]
+    quantity = product[7]
     quantity_label = QLabel(f"Количество: {quantity} шт.")
     text_layout.addWidget(quantity_label)
 
-    composition = product[5] if product[5] else "Не указан"
+    composition = product[4] if product[4] else "Не указан"
     composition_label = QLabel(f"Состав: {composition}")
     text_layout.addWidget(composition_label)
 
     card_layout.addLayout(text_layout)
 
     product_id = product[0]
-    base_price = float(product[6])
+    base_price = float(product[5])
     
     result = calculate_price(product_id, base_price)
     
