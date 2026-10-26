@@ -91,8 +91,9 @@ def create_card(product):
     return card
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, role_id=None):
         super().__init__()
+        self.role_id = role_id
         self.setWindowTitle("Мир аудиотехники — Каталог")
         self.resize(800, 600)
         
@@ -152,7 +153,9 @@ class MainWindow(QMainWindow):
         event.accept()
 
 if __name__ == "__main__":
+    from login_window import LoginWindow
     app = QApplication(sys.argv)
-    window = MainWindow()
+    db = Database()
+    window = LoginWindow(db)
     window.show()
     sys.exit(app.exec())
