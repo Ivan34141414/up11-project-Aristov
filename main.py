@@ -1,10 +1,13 @@
 import sys
 import os
+import logging
 from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
 from audio_discount import calculate_price_audio as calculate_price 
+
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(message)s')
 
 def create_card(product):
     card = QWidget()
@@ -18,8 +21,10 @@ def create_card(product):
         if os.path.exists(full_path):
             pixmap = QPixmap(full_path)
         else:
+            logging.warning(f"Файл не найден: {full_path}. Использована заглушка.")
             pixmap = QPixmap("resources/picture.png")
     else:
+        logging.warning(f"Путь к изображению равен None для товара: {product[1]}. Использована заглушка.")
         pixmap = QPixmap("resources/picture.png")
         
     if pixmap.isNull():
