@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QH
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
+from audio_discount import calculate_price_audio as calculate_price 
 
 def create_card(product):
     card = QWidget()
@@ -43,16 +44,39 @@ def create_card(product):
 
     card_layout.addLayout(text_layout)
 
-    price = product[6]
-    price_label = QLabel(f"{price} ₽")
-    price_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #70B2AF;")
+    product_id = product[0]
+    base_price = float(product[6])
+    
+    result = calculate_price(product_id, base_price)
+    
+    if result is None:
+        final_price = base_price
+        discount_size = 0
+    elif isinstance(result, tuple):
+        final_price, discount_size = result
+    else:
+        final_price = result
+        discount_size = base_price - final_price
+
+    if discount_size > 0:
+        price_text = f"<s>{base_price} ₽</s> <b>{final_price} ₽</b><br><span style='color:red; font-size:12px;'>Скидка 25%</span>"
+    else:
+        price_text = f"<b>{final_price} ₽</b>"
+        
+    price_label = QLabel(price_text)
+    price_label.setStyleSheet("font-size: 18px; color: #70B2AF;")
     card_layout.addWidget(price_label)
 
     card.setLayout(card_layout)
-    card.setStyleSheet("background-color: #D2F6E7; border-radius: 10px; margin: 5px;")
+    
+    if quantity <= 3:
+        bg_color = "#ff8080"
+    else:
+        bg_color = "#D2F6E7"
+        
+    card.setStyleSheet(f"background-color: {bg_color}; border-radius: 10px; margin: 5px;")
     
     return card
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
