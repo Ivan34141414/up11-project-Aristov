@@ -18,6 +18,10 @@ class LoginWindow(QWidget):
         self.login_button.clicked.connect(self.check_login)
         layout.addWidget(self.login_button)
         
+        self.cancel_button = QPushButton("Отмена")
+        self.cancel_button.clicked.connect(self.close)
+        layout.addWidget(self.cancel_button)
+        
         self.setLayout(layout)
 
     def check_login(self):
