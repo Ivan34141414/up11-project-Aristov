@@ -30,7 +30,7 @@ class LoginWindow(QWidget):
 
     def login_as_guest(self):
         from main import MainWindow
-        self.main_window = MainWindow(role_id=None)
+        self.main_window = MainWindow(role_id=None, full_name="Гость")
         self.main_window.show()
         self.close()
 
@@ -47,7 +47,7 @@ class LoginWindow(QWidget):
             return
 
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, role_id FROM users WHERE login = %s", (login,))
+        cursor.execute("SELECT user_id, role_id, last_name, first_name, middle_name FROM users WHERE login = %s", (login,))
         result = cursor.fetchone()
         cursor.close()
         self.db.release_connection(conn)
@@ -58,7 +58,13 @@ class LoginWindow(QWidget):
             self.user_id = result[0]
             self.role_id = result[1]
             
+            last_name, first_name, middle_name = result[2], result[3], result[4]
+            if middle_name:
+                full_name = f"{last_name} {first_name} {middle_name}"
+            else:
+                full_name = f"{last_name} {first_name}"
+            
             from main import MainWindow
-            self.main_window = MainWindow(role_id=self.role_id)
+            self.main_window = MainWindow(role_id=self.role_id, full_name=full_name)
             self.main_window.show()
             self.close()

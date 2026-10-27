@@ -1,7 +1,7 @@
 import sys
 import os
 import logging
-from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QPushButton
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QPushButton, QMessageBox
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
@@ -91,12 +91,12 @@ def create_card(product):
     return card
 
 class MainWindow(QMainWindow):
-    def __init__(self, role_id=None):
+    def __init__(self, role_id=None, full_name="Гость"):
         super().__init__()
         self.role_id = role_id
+        self.full_name = full_name
         self.setWindowTitle("Мир аудиотехники — Каталог")
         self.resize(800, 600)
-        
         self.setWindowIcon(QIcon("resources/icon.ico"))
 
         self.db = Database()
@@ -108,24 +108,28 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         main_layout = QVBoxLayout()
 
-        header_layout = QVBoxLayout()
+        header_layout = QHBoxLayout()
         
         logo = QLabel()
-        pixmap = QPixmap("resources/logo.png").scaledToWidth(300, Qt.SmoothTransformation)
+        pixmap = QPixmap("resources/logo.png").scaledToWidth(150, Qt.SmoothTransformation)
         logo.setPixmap(pixmap)
         logo.setScaledContents(False)
-        logo.setAlignment(Qt.AlignCenter)
         header_layout.addWidget(logo)
+        
+        header_layout.addStretch()
+        
+        self.name_label = QLabel(f"ФИО: {self.full_name}")
+        self.name_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        header_layout.addWidget(self.name_label)
 
-        title = QLabel("Мир аудиотехники — Каталог")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
-        title.setAlignment(Qt.AlignCenter)
-        header_layout.addWidget(title)
+        self.logout_button = QPushButton("Выход")
+        self.logout_button.setStyleSheet("background-color: #ff8080; padding: 5px; border-radius: 5px; font-weight: bold;")
+        self.logout_button.clicked.connect(self.logout)
+        header_layout.addWidget(self.logout_button)
 
         main_layout.addLayout(header_layout)
 
         button_layout = QHBoxLayout()
-        
         self.order_button = QPushButton("Оформить заказ")
         self.manager_button = QPushButton("Заказы (менеджер)")
         self.admin_button = QPushButton("Админ-панель")
@@ -135,7 +139,6 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.manager_button)
         button_layout.addWidget(self.admin_button)
         button_layout.addStretch()
-        
         main_layout.addLayout(button_layout)
 
         scroll_area = QScrollArea()
@@ -184,6 +187,13 @@ class MainWindow(QMainWindow):
             self.manager_button.hide()
             self.order_button.hide()
 
+    def logout(self):
+        reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            from login_window import LoginWindow
+            self.login_window = LoginWindow(self.db)
+            self.login_window.show()
+            self.close()
 
     def closeEvent(self, event):
         self.db.close_all()
