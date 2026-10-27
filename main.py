@@ -9,6 +9,11 @@ from audio_discount import calculate_price_audio as calculate_price
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(message)s')
 
+def calculate_discount(old_price, new_price):
+    if old_price == 0:
+        return 0
+    return (old_price - new_price) / old_price * 100
+
 def create_card(product):
     card = QWidget()
     card_layout = QHBoxLayout()
@@ -72,11 +77,18 @@ def create_card(product):
 
     if discount_size > 0:
         price_text = f"<s>{base_price} ₽</s> <b>{final_price} ₽</b><br><span style='color:red; font-size:12px;'>Скидка 25%</span>"
+        discount_percent = calculate_discount(base_price, final_price)
     else:
         price_text = f"<b>{final_price} ₽</b>"
+        discount_percent = 0
         
     price_label = QLabel(price_text)
-    price_label.setStyleSheet("font-size: 18px; color: #70B2AF;")
+    
+    if discount_percent > 15:
+        price_label.setStyleSheet("font-size: 18px; color: #2E8B57; font-weight: bold;")
+    else:
+        price_label.setStyleSheet("font-size: 18px; color: #70B2AF;")
+        
     card_layout.addWidget(price_label)
 
     card.setLayout(card_layout)
@@ -118,7 +130,15 @@ class MainWindow(QMainWindow):
         
         header_layout.addStretch()
         
-        self.name_label = QLabel(f"ФИО: {self.full_name}")
+        role_name = "Гость"
+        if self.role_id == 1:
+            role_name = "Администратор"
+        elif self.role_id == 2:
+            role_name = "Менеджер"
+        elif self.role_id == 3:
+            role_name = "Клиент"
+            
+        self.name_label = QLabel(f"ФИО: {self.full_name} ({role_name})")
         self.name_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         header_layout.addWidget(self.name_label)
 
