@@ -58,7 +58,10 @@ class LoginWindow(QWidget):
             self.user_id = result[0]
             self.role_id = result[1]
             
-            last_name, first_name, middle_name = result[2], result[3], result[4]
+            last_name = result[2]
+            first_name = result[3]
+            middle_name = result[4]
+            
             if middle_name:
                 full_name = f"{last_name} {first_name} {middle_name}"
             else:
