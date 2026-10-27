@@ -1,7 +1,7 @@
 import sys
 import os
 import logging
-from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QPushButton
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
@@ -101,6 +101,10 @@ class MainWindow(QMainWindow):
 
         self.db = Database()
 
+        self.setup_ui()
+        self.setup_role_interface()
+
+    def setup_ui(self):
         central_widget = QWidget()
         main_layout = QVBoxLayout()
 
@@ -119,6 +123,20 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(title)
 
         main_layout.addLayout(header_layout)
+
+        button_layout = QHBoxLayout()
+        
+        self.order_button = QPushButton("Оформить заказ")
+        self.manager_button = QPushButton("Заказы (менеджер)")
+        self.admin_button = QPushButton("Админ-панель")
+        
+        button_layout.addStretch()
+        button_layout.addWidget(self.order_button)
+        button_layout.addWidget(self.manager_button)
+        button_layout.addWidget(self.admin_button)
+        button_layout.addStretch()
+        
+        main_layout.addLayout(button_layout)
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -147,6 +165,25 @@ class MainWindow(QMainWindow):
                 color: #000000;
             }
         """)
+
+    def setup_role_interface(self):
+        if self.role_id == 1:
+            self.admin_button.show()
+            self.manager_button.show()
+            self.order_button.hide()
+        elif self.role_id == 2:
+            self.admin_button.hide()
+            self.manager_button.show()
+            self.order_button.hide()
+        elif self.role_id == 3:
+            self.admin_button.hide()
+            self.manager_button.hide()
+            self.order_button.show()
+        else:
+            self.admin_button.hide()
+            self.manager_button.hide()
+            self.order_button.hide()
+
 
     def closeEvent(self, event):
         self.db.close_all()

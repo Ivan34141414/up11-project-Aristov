@@ -5,7 +5,7 @@ class LoginWindow(QWidget):
         super().__init__()
         self.db = db
         self.setWindowTitle("Авторизация")
-        self.resize(300, 200)
+        self.resize(300, 250)
         
         layout = QVBoxLayout()
         
@@ -17,12 +17,22 @@ class LoginWindow(QWidget):
         self.login_button = QPushButton("Войти")
         self.login_button.clicked.connect(self.check_login)
         layout.addWidget(self.login_button)
+
+        self.guest_button = QPushButton("Войти как гость")
+        self.guest_button.clicked.connect(self.login_as_guest)
+        layout.addWidget(self.guest_button)
         
         self.cancel_button = QPushButton("Отмена")
         self.cancel_button.clicked.connect(self.close)
         layout.addWidget(self.cancel_button)
         
         self.setLayout(layout)
+
+    def login_as_guest(self):
+        from main import MainWindow
+        self.main_window = MainWindow(role_id=None)
+        self.main_window.show()
+        self.close()
 
     def check_login(self):
         login = self.login_input.text()
