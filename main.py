@@ -51,8 +51,8 @@ def create_card(product):
     category_label = QLabel(f"Категория: {category}")
     text_layout.addWidget(category_label)
 
-    quantity = product[7]
-    quantity_label = QLabel(f"Количество: {quantity} шт.")
+    total_quantity = product[7]
+    quantity_label = QLabel(f"Количество: {total_quantity} шт.")
     text_layout.addWidget(quantity_label)
 
     composition = product[4] if product[4] else "Не указан"
@@ -97,10 +97,12 @@ def create_card(product):
         price_layout.addWidget(new_price_label)
 
     card_layout.addLayout(price_layout)
-
     card.setLayout(card_layout)
     
-    if quantity <= 3:
+
+    if total_quantity == 0:
+        bg_color = "#ADD8E6"
+    elif total_quantity <= 3:
         bg_color = "#ff8080"
     else:
         bg_color = "#D2F6E7"
