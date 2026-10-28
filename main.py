@@ -64,32 +64,39 @@ def create_card(product):
     product_id = product[0]
     base_price = float(product[5])
     
-    result = calculate_price(product_id, base_price)
-    
-    if result is None:
-        final_price = base_price
-        discount_size = 0
-    elif isinstance(result, tuple):
-        final_price, discount_size = result
-    else:
-        final_price = result
-        discount_size = base_price - final_price
+    new_price = calculate_price(product_id, base_price)
+    if isinstance(new_price, tuple):
+        new_price = new_price[0]
+    elif new_price is None:
+        new_price = base_price
 
-    if discount_size > 0:
-        price_text = f"<s>{base_price} ₽</s> <b>{final_price} ₽</b><br><span style='color:red; font-size:12px;'>Скидка 25%</span>"
-        discount_percent = calculate_discount(base_price, final_price)
-    else:
-        price_text = f"<b>{final_price} ₽</b>"
-        discount_percent = 0
-        
-    price_label = QLabel(price_text)
+    discount_percent = calculate_discount(base_price, new_price)
+
+    price_layout = QVBoxLayout()
+    price_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+    old_price_label = QLabel(f"<s>{base_price} ₽</s>")
+    old_price_label.setStyleSheet("color: red; font-size: 14px;")
     
-    if discount_percent > 15:
-        price_label.setStyleSheet("font-size: 18px; color: #2E8B57; font-weight: bold;")
+    new_price_label = QLabel(f"{new_price} ₽")
+    new_price_label.setStyleSheet("color: black; font-weight: bold; font-size: 18px;")
+    
+    discount_label = QLabel(f"-{int(discount_percent)}%")
+    if discount_percent > 30:
+        discount_label.setStyleSheet("color: #FF8C00; font-weight: bold; font-size: 14px;")
     else:
-        price_label.setStyleSheet("font-size: 18px; color: #70B2AF;")
-        
-    card_layout.addWidget(price_label)
+        discount_label.setStyleSheet("color: #2E8B57; font-weight: bold; font-size: 14px;")
+
+    if discount_percent > 0:
+        price_layout.addWidget(old_price_label)
+        price_layout.addWidget(new_price_label)
+        price_layout.addWidget(discount_label)
+    else:
+        old_price_label.hide()
+        discount_label.hide()
+        price_layout.addWidget(new_price_label)
+
+    card_layout.addLayout(price_layout)
 
     card.setLayout(card_layout)
     
