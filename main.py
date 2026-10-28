@@ -58,7 +58,9 @@ def create_card(product):
     composition = product[4] if product[4] else "Не указан"
     composition_label = QLabel(f"Состав: {composition}")
     text_layout.addWidget(composition_label)
-    
+
+
+    # Если товара нет на складе - голубая подсветка и текст «Нет в наличии»
     if total_quantity == 0:
         out_of_stock_label = QLabel("Нет в наличии")
         out_of_stock_label.setStyleSheet("color: red; font-weight: bold; font-size: 14px;")
@@ -166,6 +168,7 @@ class MainWindow(QMainWindow):
         header_layout.addStretch()
         
         role_name = "Гость"
+        # Администратор (role_id = 1) видит все кнопки
         if self.role_id == 1:
             role_name = "Администратор"
         elif self.role_id == 2:

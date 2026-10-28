@@ -52,7 +52,7 @@ class Database:
             
             search_param = f"%{search_query}%"
             sort_dir = "ASC" if sort_order == "По возрастанию" else "DESC"
-            
+            # Поиск без учёта регистра (ILIKE) по наименованию и описанию
             query = f"""
                 SELECT 
                     p.product_id, 
