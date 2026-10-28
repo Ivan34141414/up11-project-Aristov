@@ -1,7 +1,7 @@
 import sys
 import os
 import logging
-from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QPushButton, QMessageBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, QLineEdit
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
@@ -64,7 +64,6 @@ def create_card(product):
         out_of_stock_label.setStyleSheet("color: red; font-weight: bold; font-size: 14px;")
         text_layout.addWidget(out_of_stock_label)
 
-
     card_layout.addLayout(text_layout)
 
     product_id = product[0]
@@ -101,7 +100,6 @@ def create_card(product):
         old_price_label.hide()
         discount_label.hide()
         price_layout.addWidget(new_price_label)
-
 
     if total_quantity == 0:
         order_btn = QPushButton("Оформить")
@@ -141,13 +139,14 @@ class MainWindow(QMainWindow):
         self.role_id = role_id
         self.full_name = full_name
         self.setWindowTitle("Мир аудиотехники — Каталог")
-        self.resize(800, 600)
+        self.resize(850, 650)
         self.setWindowIcon(QIcon("resources/icon.ico"))
 
         self.db = Database()
 
         self.setup_ui()
         self.setup_role_interface()
+        self.load_products()
 
     def setup_ui(self):
         central_widget = QWidget()
@@ -202,20 +201,38 @@ class MainWindow(QMainWindow):
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("border: none;")
+        self.search_widget = QWidget()
+        search_layout = QHBoxLayout(self.search_widget)
+        search_layout.setContentsMargins(0, 0, 0, 0)
 
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Поиск по названию или описанию...")
+        self.search_input.textChanged.connect(self.load_products)
+        search_layout.addWidget(self.search_input)
 
-        products = self.db.get_products()
-        for product in products:
-            card = create_card(product)
-            scroll_layout.addWidget(card)
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItem("Все категории")
+        self.filter_combo.addItems(self.db.get_categories())
+        self.filter_combo.currentIndexChanged.connect(self.load_products)
+        search_layout.addWidget(self.filter_combo)
 
-        scroll_area.setWidget(scroll_content)
-        main_layout.addWidget(scroll_area)
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(["По возрастанию", "По убыванию"])
+        self.sort_combo.currentIndexChanged.connect(self.load_products)
+        search_layout.addWidget(self.sort_combo)
+
+        main_layout.addWidget(self.search_widget)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("border: none;")
+
+        self.scroll_content = QWidget()
+        self.scroll_layout = QVBoxLayout(self.scroll_content)
+        self.scroll_layout.setAlignment(Qt.AlignTop)
+
+        self.scroll_area.setWidget(self.scroll_content)
+        main_layout.addWidget(self.scroll_area)
 
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
@@ -230,23 +247,50 @@ class MainWindow(QMainWindow):
             }
         """)
 
+    def load_products(self):
+        while self.scroll_layout.count():
+            item = self.scroll_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        search = self.search_input.text()
+        category = self.filter_combo.currentText()
+        sort_order = self.sort_combo.currentText()
+
+        products = self.db.get_products(search, category, sort_order)
+
+        if not products:
+            no_results = QLabel("Товары не найдены")
+            no_results.setAlignment(Qt.AlignCenter)
+            no_results.setStyleSheet("font-size: 18px; color: gray; margin-top: 20px;")
+            self.scroll_layout.addWidget(no_results)
+            return
+
+        for product in products:
+            card = create_card(product)
+            self.scroll_layout.addWidget(card)
+
     def setup_role_interface(self):
         if self.role_id == 1:
             self.admin_button.show()
             self.manager_button.show()
             self.order_button.hide()
+            self.search_widget.show()
         elif self.role_id == 2:
             self.admin_button.hide()
             self.manager_button.show()
             self.order_button.hide()
+            self.search_widget.show()
         elif self.role_id == 3:
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.show()
+            self.search_widget.show()
         else:
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.hide()
+            self.search_widget.hide()
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)

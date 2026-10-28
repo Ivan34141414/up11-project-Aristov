@@ -27,13 +27,33 @@ class Database:
         if self.connection_pool:
             self.connection_pool.closeall()
 
-    def get_products(self):
+    def get_categories(self):
         conn = self.get_connection()
         if not conn:
             return []
         try:
             cursor = conn.cursor()
-            query = """
+            cursor.execute("SELECT name FROM categories ORDER BY name")
+            categories = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return categories
+        except psycopg2.Error as e:
+            print(f"Ошибка запроса категорий: {e}")
+            return []
+        finally:
+            self.release_connection(conn)
+
+    def get_products(self, search_query="", category_name="Все категории", sort_order="По возрастанию"):
+        conn = self.get_connection()
+        if not conn:
+            return []
+        try:
+            cursor = conn.cursor()
+            
+            search_param = f"%{search_query}%"
+            sort_dir = "ASC" if sort_order == "По возрастанию" else "DESC"
+            
+            query = f"""
                 SELECT 
                     p.product_id, 
                     p.name, 
@@ -46,15 +66,18 @@ class Database:
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.category_id
                 LEFT JOIN stock_items si ON p.product_id = si.product_id
+                WHERE (p.name ILIKE %s OR p.description ILIKE %s)
+                AND (c.name = %s OR %s = 'Все категории')
                 GROUP BY p.product_id, c.name, p.name, p.manufacturer, p.composition, p.price, p.image_path
-                ORDER BY p.product_id;
+                ORDER BY p.price {sort_dir};
             """
-            cursor.execute(query)
+            
+            cursor.execute(query, (search_param, search_param, category_name, category_name))
             products = cursor.fetchall()
             cursor.close()
             return products
         except psycopg2.Error as e:
-            print(f"Ошибка запроса: {e}")
+            print(f"Ошибка запроса товаров: {e}")
             return []
         finally:
             self.release_connection(conn)
