@@ -7,6 +7,30 @@ class LoginWindow(QWidget):
         self.setWindowTitle("Авторизация")
         self.resize(300, 250)
         
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #FFFFFF;
+                font-family: Calibri;
+            }
+            QLabel {
+                color: #000000;
+            }
+            QLineEdit {
+                background-color: #FFFFFF;
+                color: #000000;
+                border: 1px solid #CCCCCC;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QPushButton {
+                background-color: #70B2AF;
+                color: white;
+                padding: 8px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+        """)
+        
         layout = QVBoxLayout()
         
         self.login_input = QLineEdit()

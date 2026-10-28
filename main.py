@@ -58,6 +58,12 @@ def create_card(product):
     composition = product[4] if product[4] else "Не указан"
     composition_label = QLabel(f"Состав: {composition}")
     text_layout.addWidget(composition_label)
+    
+    if total_quantity == 0:
+        out_of_stock_label = QLabel("Нет в наличии")
+        out_of_stock_label.setStyleSheet("color: red; font-weight: bold; font-size: 14px;")
+        text_layout.addWidget(out_of_stock_label)
+
 
     card_layout.addLayout(text_layout)
 
@@ -96,9 +102,15 @@ def create_card(product):
         discount_label.hide()
         price_layout.addWidget(new_price_label)
 
+
+    if total_quantity == 0:
+        order_btn = QPushButton("Оформить")
+        order_btn.setEnabled(False)
+        order_btn.setStyleSheet("background-color: #cccccc; color: gray; padding: 5px; border-radius: 5px;")
+        price_layout.addWidget(order_btn)
+
     card_layout.addLayout(price_layout)
     card.setLayout(card_layout)
-    
 
     if total_quantity == 0:
         bg_color = "#ADD8E6"
@@ -107,7 +119,19 @@ def create_card(product):
     else:
         bg_color = "#D2F6E7"
         
-    card.setStyleSheet(f"background-color: {bg_color}; border-radius: 10px; margin: 5px;")
+    card.setObjectName("ProductCard")
+    card.setStyleSheet(f"""
+        QWidget#ProductCard {{
+            background-color: {bg_color};
+            border-radius: 10px;
+            margin: 5px;
+            border: 2px solid transparent;
+        }}
+        QWidget#ProductCard:hover {{
+            border: 2px solid #70B2AF;
+            background-color: #E6FFF5;
+        }}
+    """)
     
     return card
 
@@ -129,12 +153,15 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         main_layout = QVBoxLayout()
 
-        header_layout = QHBoxLayout()
+        header_widget = QWidget()
+        header_widget.setStyleSheet("background-color: #D2F6E7; border-radius: 10px;")
+        header_layout = QHBoxLayout(header_widget)
         
         logo = QLabel()
         pixmap = QPixmap("resources/logo.png").scaledToWidth(150, Qt.SmoothTransformation)
         logo.setPixmap(pixmap)
         logo.setScaledContents(False)
+        logo.setStyleSheet("background-color: transparent;")
         header_layout.addWidget(logo)
         
         header_layout.addStretch()
@@ -148,7 +175,7 @@ class MainWindow(QMainWindow):
             role_name = "Клиент"
             
         self.name_label = QLabel(f"ФИО: {self.full_name} ({role_name})")
-        self.name_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self.name_label.setStyleSheet("font-weight: bold; font-size: 14px; background-color: transparent;")
         header_layout.addWidget(self.name_label)
 
         self.logout_button = QPushButton("Выход")
@@ -156,13 +183,18 @@ class MainWindow(QMainWindow):
         self.logout_button.clicked.connect(self.logout)
         header_layout.addWidget(self.logout_button)
 
-        main_layout.addLayout(header_layout)
+        main_layout.addWidget(header_widget)
 
         button_layout = QHBoxLayout()
         self.order_button = QPushButton("Оформить заказ")
         self.manager_button = QPushButton("Заказы (менеджер)")
         self.admin_button = QPushButton("Админ-панель")
-        
+
+        button_style = "background-color: #70B2AF; color: white; font-family: Calibri; padding: 8px; border-radius: 5px; font-weight: bold;"
+        self.order_button.setStyleSheet(button_style)
+        self.manager_button.setStyleSheet(button_style)
+        self.admin_button.setStyleSheet(button_style)
+
         button_layout.addStretch()
         button_layout.addWidget(self.order_button)
         button_layout.addWidget(self.manager_button)
