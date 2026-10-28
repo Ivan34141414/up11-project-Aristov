@@ -54,7 +54,7 @@ class LoginWindow(QWidget):
 
     def login_as_guest(self):
         from main import MainWindow
-        self.main_window = MainWindow(role_id=None, full_name="Гость")
+        self.main_window = MainWindow(self.db, role_id=None, full_name="Гость")
         self.main_window.show()
         self.close()
 
@@ -92,6 +92,6 @@ class LoginWindow(QWidget):
                 full_name = f"{last_name} {first_name}"
             
             from main import MainWindow
-            self.main_window = MainWindow(role_id=self.role_id, full_name=full_name)
+            self.main_window = MainWindow(self.db, role_id=self.role_id, full_name=full_name)
             self.main_window.show()
             self.close()

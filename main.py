@@ -136,15 +136,14 @@ def create_card(product):
     return card
 
 class MainWindow(QMainWindow):
-    def __init__(self, role_id=None, full_name="Гость"):
+    def __init__(self, db, role_id=None, full_name="Гость"):
         super().__init__()
+        self.db = db
         self.role_id = role_id
         self.full_name = full_name
         self.setWindowTitle("Мир аудиотехники — Каталог")
         self.resize(850, 650)
         self.setWindowIcon(QIcon("resources/icon.ico"))
-
-        self.db = Database()
 
         self.setup_ui()
         self.setup_role_interface()
@@ -304,13 +303,13 @@ class MainWindow(QMainWindow):
             self.close()
 
     def closeEvent(self, event):
-        self.db.close_all()
         event.accept()
 
 if __name__ == "__main__":
     from login_window import LoginWindow
     app = QApplication(sys.argv)
     db = Database()
+    app.aboutToQuit.connect(db.close_all)
     window = LoginWindow(db)
     window.show()
     sys.exit(app.exec())
