@@ -129,7 +129,6 @@ def create_card(product):
         }}
         QWidget#ProductCard:hover {{
             border: 2px solid #70B2AF;
-            background-color: #E6FFF5;
         }}
     """)
     

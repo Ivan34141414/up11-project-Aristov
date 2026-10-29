@@ -52,8 +52,15 @@ class Database:
             
             search_param = f"%{search_query}%"
             sort_dir = "ASC" if sort_order == "По возрастанию" else "DESC"
-            # Поиск без учёта регистра (ILIKE) по наименованию и описанию
+            
             query = f"""
+                WITH order_counts AS (
+                    SELECT oi.product_id, COUNT(*) as cnt
+                    FROM order_items oi
+                    JOIN orders o ON oi.order_id = o.order_id
+                    WHERE o.order_date >= CURRENT_DATE - INTERVAL '1 month'
+                    GROUP BY oi.product_id
+                )
                 SELECT 
                     p.product_id, 
                     p.name, 
@@ -66,10 +73,15 @@ class Database:
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.category_id
                 LEFT JOIN stock_items si ON p.product_id = si.product_id
+                LEFT JOIN order_counts oc ON p.product_id = oc.product_id
                 WHERE (p.name ILIKE %s OR p.description ILIKE %s)
                 AND (c.name = %s OR %s = 'Все категории')
-                GROUP BY p.product_id, c.name, p.name, p.manufacturer, p.composition, p.price, p.image_path
-                ORDER BY p.price {sort_dir};
+                GROUP BY p.product_id, c.name, p.name, p.manufacturer, p.composition, p.price, p.image_path, oc.cnt
+                ORDER BY 
+                    CASE 
+                        WHEN COALESCE(oc.cnt, 0) = 0 THEN p.price * 0.75 
+                        ELSE p.price 
+                    END {sort_dir};
             """
             
             cursor.execute(query, (search_param, search_param, category_name, category_name))
