@@ -100,16 +100,22 @@ def create_card(product, db):
         discount_label.hide()
         price_layout.addWidget(new_price_label)
 
+    order_btn = QPushButton("Оформить")
     if total_quantity == 0:
-        order_btn = QPushButton("Оформить")
         order_btn.setEnabled(False)
+        order_btn.setText("Нет в наличии")
         order_btn.setStyleSheet("background-color: #cccccc; color: gray; padding: 5px; border-radius: 5px;")
-        price_layout.addWidget(order_btn)
+    else:
+        order_btn.setStyleSheet("background-color: #70B2AF; color: white; padding: 5px; border-radius: 5px; font-weight: bold;")
+    
+    price_layout.addWidget(order_btn)
 
     card_layout.addLayout(price_layout)
     card.setLayout(card_layout)
 
-    if total_quantity <= 3:
+    if total_quantity == 0:
+        bg_color = "#ADD8E6"
+    elif total_quantity <= 3:
         bg_color = "#FF8080"
     else:
         bg_color = "#D2F6E7"
