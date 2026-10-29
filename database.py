@@ -67,16 +67,18 @@ class Database:
                     c.name AS category_name, 
                     p.manufacturer, 
                     p.composition, 
+                    p.description,
                     p.price, 
                     p.image_path,
-                    COALESCE(SUM(si.quantity), 0) AS total_quantity
+                    COALESCE(SUM(si.quantity), 0) AS total_quantity,
+                    COALESCE(oc.cnt, 0) AS orders_count
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.category_id
                 LEFT JOIN stock_items si ON p.product_id = si.product_id
                 LEFT JOIN order_counts oc ON p.product_id = oc.product_id
                 WHERE (p.name ILIKE %s OR p.description ILIKE %s)
                 AND (c.name = %s OR %s = 'Все категории')
-                GROUP BY p.product_id, c.name, p.name, p.manufacturer, p.composition, p.price, p.image_path, oc.cnt
+                GROUP BY p.product_id, c.name, p.name, p.manufacturer, p.composition, p.description, p.price, p.image_path, oc.cnt
                 ORDER BY 
                     CASE 
                         WHEN COALESCE(oc.cnt, 0) = 0 THEN p.price * 0.75 

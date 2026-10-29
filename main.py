@@ -1,11 +1,11 @@
 import sys
 import os
 import logging
+from decimal import Decimal, ROUND_HALF_UP
 from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, QLineEdit
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
-from audio_discount import calculate_price_audio as calculate_price 
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(message)s')
 
@@ -14,22 +14,20 @@ def calculate_discount(old_price, new_price):
         return 0
     return (old_price - new_price) / old_price * 100
 
-def create_card(product):
+def create_card(product, db):
     card = QWidget()
     card_layout = QHBoxLayout()
 
     image_label = QLabel()
-    image_path_from_db = product[6]
+    image_path_from_db = product[7]
     
     if image_path_from_db:
         full_path = os.path.join("resources", image_path_from_db)
         if os.path.exists(full_path):
             pixmap = QPixmap(full_path)
         else:
-            logging.warning(f"Файл не найден: {full_path}. Использована заглушка.")
             pixmap = QPixmap("resources/picture.png")
     else:
-        logging.warning(f"Путь к изображению равен None для товара: {product[1]}. Использована заглушка.")
         pixmap = QPixmap("resources/picture.png")
         
     if pixmap.isNull():
@@ -50,31 +48,29 @@ def create_card(product):
     category = product[2] if product[2] else "Без категории"
     category_label = QLabel(f"Категория: {category}")
     text_layout.addWidget(category_label)
+    
+    material = product[4] if product[4] else "Не указан"
+    material_label = QLabel(f"Состав: {material}")
+    text_layout.addWidget(material_label)
+    
+    description = product[5] if product[5] else "Нет описания"
+    description_label = QLabel(f"Описание: {description}")
+    text_layout.addWidget(description_label)
 
-    total_quantity = product[7]
+    total_quantity = product[8]
     quantity_label = QLabel(f"Количество: {total_quantity} шт.")
     text_layout.addWidget(quantity_label)
-
-    composition = product[4] if product[4] else "Не указан"
-    composition_label = QLabel(f"Состав: {composition}")
-    text_layout.addWidget(composition_label)
-
-
-    # Если товара нет на складе - голубая подсветка и текст «Нет в наличии»
-    if total_quantity == 0:
-        out_of_stock_label = QLabel("Нет в наличии")
-        out_of_stock_label.setStyleSheet("color: red; font-weight: bold; font-size: 14px;")
-        text_layout.addWidget(out_of_stock_label)
 
     card_layout.addLayout(text_layout)
 
     product_id = product[0]
-    base_price = float(product[5])
+    base_price = float(product[6])
+    orders_count = product[9]
     
-    new_price = calculate_price(product_id, base_price)
-    if isinstance(new_price, tuple):
-        new_price = new_price[0]
-    elif new_price is None:
+    if orders_count == 0:
+        new_price_dec = Decimal(str(base_price)) * Decimal('0.75')
+        new_price = float(new_price_dec.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+    else:
         new_price = base_price
 
     discount_percent = calculate_discount(base_price, new_price)
@@ -86,13 +82,14 @@ def create_card(product):
     old_price_label.setStyleSheet("color: red; font-size: 14px;")
     
     new_price_label = QLabel(f"{new_price} ₽")
-    new_price_label.setStyleSheet("color: black; font-weight: bold; font-size: 18px;")
+    
+    if discount_percent > 15:
+        new_price_label.setStyleSheet("font-size: 18px; color: #2E8B57; font-weight: bold;")
+    else:
+        new_price_label.setStyleSheet("font-size: 18px; color: black; font-weight: bold;")
     
     discount_label = QLabel(f"-{int(discount_percent)}%")
-    if discount_percent > 30:
-        discount_label.setStyleSheet("color: #FF8C00; font-weight: bold; font-size: 14px;")
-    else:
-        discount_label.setStyleSheet("color: #2E8B57; font-weight: bold; font-size: 14px;")
+    discount_label.setStyleSheet("color: #2E8B57; font-weight: bold; font-size: 14px;")
 
     if discount_percent > 0:
         price_layout.addWidget(old_price_label)
@@ -112,10 +109,8 @@ def create_card(product):
     card_layout.addLayout(price_layout)
     card.setLayout(card_layout)
 
-    if total_quantity == 0:
-        bg_color = "#ADD8E6"
-    elif total_quantity <= 3:
-        bg_color = "#ff8080"
+    if total_quantity <= 3:
+        bg_color = "#FF8080"
     else:
         bg_color = "#D2F6E7"
         
@@ -166,7 +161,6 @@ class MainWindow(QMainWindow):
         header_layout.addStretch()
         
         role_name = "Гость"
-        # Администратор (role_id = 1) видит все кнопки
         if self.role_id == 1:
             role_name = "Администратор"
         elif self.role_id == 2:
@@ -268,7 +262,7 @@ class MainWindow(QMainWindow):
             return
 
         for product in products:
-            card = create_card(product)
+            card = create_card(product, self.db)
             self.scroll_layout.addWidget(card)
 
     def setup_role_interface(self):
