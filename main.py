@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from database import Database
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(message)s')
+logging.getLogger("psycopg.pool").setLevel(logging.ERROR)
 
 def calculate_discount(old_price, new_price):
     if old_price == 0:

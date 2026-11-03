@@ -1,14 +1,15 @@
-import psycopg2
-from psycopg2 import pool
+import psycopg
+from psycopg_pool import ConnectionPool
 
 class Database:
     def __init__(self):
         self.connection_pool = None
         try:
-            self.connection_pool = pool.SimpleConnectionPool(
-                1, 5,
-                host="localhost", port=5432, database="audio_db",
-                user="postgres", password="123"
+            conninfo = "host=localhost port=5432 dbname=audio_db user=postgres password=123"
+            self.connection_pool = ConnectionPool(
+                conninfo=conninfo,
+                min_size=1,
+                max_size=5
             )
         except Exception as e:
             print(f"Ошибка БД: {e}")
@@ -25,7 +26,7 @@ class Database:
 
     def close_all(self):
         if self.connection_pool:
-            self.connection_pool.closeall()
+            self.connection_pool.close()
 
     def get_categories(self):
         conn = self.get_connection()
@@ -37,7 +38,7 @@ class Database:
             categories = [row[0] for row in cursor.fetchall()]
             cursor.close()
             return categories
-        except psycopg2.Error as e:
+        except psycopg.Error as e:
             print(f"Ошибка запроса категорий: {e}")
             return []
         finally:
@@ -90,7 +91,7 @@ class Database:
             products = cursor.fetchall()
             cursor.close()
             return products
-        except psycopg2.Error as e:
+        except psycopg.Error as e:
             print(f"Ошибка запроса товаров: {e}")
             return []
         finally:
@@ -106,7 +107,7 @@ class Database:
             result = cursor.fetchall()
             cursor.close()
             return result
-        except psycopg2.Error as e:
+        except psycopg.Error as e:
             print(f"Ошибка запроса: {e}")
             return []
         finally:
@@ -122,7 +123,7 @@ class Database:
             conn.commit()
             cursor.close()
             return True
-        except psycopg2.Error as e:
+        except psycopg.Error as e:
             if conn:
                 conn.rollback()
             print(f"Ошибка обновления: {e}")
