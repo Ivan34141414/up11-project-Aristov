@@ -1,12 +1,14 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 
-class LoginWindow(QWidget):
+class LoginWindow(QDialog):
     def __init__(self, db):
         super().__init__()
         self.db = db
         self.setWindowTitle("Авторизация")
         self.resize(300, 250)
-        
+        self.setup_ui()
+
+    def setup_ui(self):
         self.setStyleSheet("""
             QWidget {
                 background-color: #FFFFFF;
@@ -47,20 +49,19 @@ class LoginWindow(QWidget):
         layout.addWidget(self.guest_button)
         
         self.cancel_button = QPushButton("Отмена")
-        self.cancel_button.clicked.connect(self.close)
+        self.cancel_button.clicked.connect(self.reject)
         layout.addWidget(self.cancel_button)
         
         self.setLayout(layout)
 
     def login_as_guest(self):
+        self.accept()
         from main import MainWindow
         self.main_window = MainWindow(self.db, role_id=None, full_name="Гость")
         self.main_window.show()
-        self.close()
 
     def check_login(self):
         login = self.login_input.text()
-        
         if not login:
             QMessageBox.warning(self, "Ошибка", "Введите логин")
             return
@@ -77,7 +78,7 @@ class LoginWindow(QWidget):
         self.db.release_connection(conn)
 
         if result is None:
-            QMessageBox.warning(self, "Ошибка", "Неверный логин")
+            QMessageBox.warning(self, "Ошибка", "Пользователь не найден")
         else:
             self.user_id = result[0]
             self.role_id = result[1]
@@ -91,7 +92,7 @@ class LoginWindow(QWidget):
             else:
                 full_name = f"{last_name} {first_name}"
             
+            self.accept()
             from main import MainWindow
             self.main_window = MainWindow(self.db, role_id=self.role_id, full_name=full_name)
             self.main_window.show()
-            self.close()
