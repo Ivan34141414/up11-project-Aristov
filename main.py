@@ -2,7 +2,10 @@ import sys
 import os
 import logging
 from decimal import Decimal, ROUND_HALF_UP
-from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, QLineEdit, QStackedWidget
+from datetime import datetime
+from PySide6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, 
+                               QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, 
+                               QLineEdit, QStackedWidget, QDialog, QFormLayout)
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
@@ -120,6 +123,66 @@ def create_card(product, db):
     """)
     return card
 
+class ValidationDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Тест валидации ввода")
+        self.resize(350, 300)
+        
+        layout = QFormLayout()
+        
+        self.quantity_input = QLineEdit()
+        self.price_input = QLineEdit()
+        self.name_input = QLineEdit()
+        self.date_input = QLineEdit()
+        self.date_input.setPlaceholderText("ДД.ММ.ГГГГ")
+        
+        layout.addRow("Количество:", self.quantity_input)
+        layout.addRow("Цена:", self.price_input)
+        layout.addRow("Наименование:", self.name_input)
+        layout.addRow("Дата:", self.date_input)
+        
+        btn = QPushButton("Проверить")
+        btn.clicked.connect(self.check_inputs)
+        layout.addRow(btn)
+        
+        self.setLayout(layout)
+
+    def check_inputs(self):
+        qty_text = self.quantity_input.text()
+        try:
+            quantity = int(qty_text)
+            if quantity <= 0:
+                QMessageBox.critical(self, "Ошибка", "Количество должно быть положительным")
+                return
+        except ValueError:
+            QMessageBox.critical(self, "Ошибка", "Введите число в поле 'Количество'")
+            return
+
+        price_text = self.price_input.text()
+        try:
+            price = float(price_text)
+            if price <= 0:
+                QMessageBox.critical(self, "Ошибка", "Цена должна быть положительной")
+                return
+        except ValueError:
+            QMessageBox.critical(self, "Ошибка", "Введите число в поле 'Цена'")
+            return
+
+        name = self.name_input.text()
+        if not name:
+            QMessageBox.critical(self, "Ошибка", "Введите наименование")
+            return
+
+        date_str = self.date_input.text()
+        try:
+            date = datetime.strptime(date_str, "%d.%m.%Y")
+        except ValueError:
+            QMessageBox.critical(self, "Ошибка", "Введите дату в формате ДД.ММ.ГГГГ")
+            return
+            
+        QMessageBox.information(self, "Успех", "Все данные корректны!")
+
 class MainWindow(QMainWindow):
     def __init__(self, db, role_id=None, full_name="Гость"):
         super().__init__()
@@ -176,6 +239,10 @@ class MainWindow(QMainWindow):
         self.order_button = QPushButton("Оформить заказ")
         self.manager_button = QPushButton("Заказы (менеджер)")
         self.admin_button = QPushButton("Админ-панель")
+        
+        self.test_val_button = QPushButton("Тест валидации")
+        self.test_val_button.setStyleSheet("background-color: #FF8C00; color: white; padding: 5px; border-radius: 5px;")
+        self.test_val_button.clicked.connect(self.open_validation_test)
 
         self.order_button.clicked.connect(self.confirm_order)
 
@@ -188,6 +255,7 @@ class MainWindow(QMainWindow):
         self.admin_button.clicked.connect(lambda: self.switch_page(2))
 
         button_layout.addStretch()
+        button_layout.addWidget(self.test_val_button)
         button_layout.addWidget(self.order_button)
         button_layout.addWidget(self.manager_button)
         button_layout.addWidget(self.admin_button)
@@ -248,6 +316,10 @@ class MainWindow(QMainWindow):
             QMainWindow { background-color: #FFFFFF; font-family: Calibri; }
             QLabel { color: #000000; }
         """)
+        
+    def open_validation_test(self):
+        dialog = ValidationDialog()
+        dialog.exec()
 
     def switch_page(self, index):
         self.stacked_widget.setCurrentIndex(index)
@@ -306,11 +378,6 @@ class MainWindow(QMainWindow):
 
     def confirm_order(self):
         QMessageBox.information(self, "Информация", "Заказ успешно оформлен")
-
-    def delete_order(self):
-        reply = QMessageBox.warning(self, "Предупреждение", "Вы уверены, что хотите удалить заказ?", QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            QMessageBox.information(self, "Информация", "Заказ удален")
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
