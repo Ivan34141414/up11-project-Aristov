@@ -10,27 +10,10 @@ class LoginWindow(QDialog):
 
     def setup_ui(self):
         self.setStyleSheet("""
-            QWidget {
-                background-color: #FFFFFF;
-                font-family: Calibri;
-            }
-            QLabel {
-                color: #000000;
-            }
-            QLineEdit {
-                background-color: #FFFFFF;
-                color: #000000;
-                border: 1px solid #CCCCCC;
-                border-radius: 5px;
-                padding: 5px;
-            }
-            QPushButton {
-                background-color: #70B2AF;
-                color: white;
-                padding: 8px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
+            QWidget { background-color: #FFFFFF; font-family: Calibri; }
+            QLabel { color: #000000; }
+            QLineEdit { background-color: #FFFFFF; color: #000000; border: 1px solid #CCCCCC; border-radius: 5px; padding: 5px; }
+            QPushButton { background-color: #70B2AF; color: white; padding: 8px; border-radius: 5px; font-weight: bold; }
         """)
         
         layout = QVBoxLayout()
@@ -62,8 +45,9 @@ class LoginWindow(QDialog):
 
     def check_login(self):
         login = self.login_input.text()
+        
         if not login:
-            QMessageBox.warning(self, "Ошибка", "Введите логин")
+            QMessageBox.critical(self, "Ошибка", "Введите логин")
             return
 
         conn = self.db.get_connection()
@@ -78,7 +62,7 @@ class LoginWindow(QDialog):
         self.db.release_connection(conn)
 
         if result is None:
-            QMessageBox.warning(self, "Ошибка", "Пользователь не найден")
+            QMessageBox.critical(self, "Ошибка", "Пользователь не найден")
         else:
             self.user_id = result[0]
             self.role_id = result[1]

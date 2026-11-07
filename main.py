@@ -177,6 +177,8 @@ class MainWindow(QMainWindow):
         self.manager_button = QPushButton("Заказы (менеджер)")
         self.admin_button = QPushButton("Админ-панель")
 
+        self.order_button.clicked.connect(self.confirm_order)
+
         button_style = "background-color: #70B2AF; color: white; font-family: Calibri; padding: 8px; border-radius: 5px; font-weight: bold;"
         self.order_button.setStyleSheet(button_style)
         self.manager_button.setStyleSheet(button_style)
@@ -301,6 +303,14 @@ class MainWindow(QMainWindow):
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.hide()
+
+    def confirm_order(self):
+        QMessageBox.information(self, "Информация", "Заказ успешно оформлен")
+
+    def delete_order(self):
+        reply = QMessageBox.warning(self, "Предупреждение", "Вы уверены, что хотите удалить заказ?", QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            QMessageBox.information(self, "Информация", "Заказ удален")
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
