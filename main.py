@@ -5,7 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from PySide6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, 
                                QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, 
-                               QLineEdit, QStackedWidget, QDialog, QFormLayout)
+                               QLineEdit, QDialog, QFormLayout)
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
@@ -13,12 +13,25 @@ from database import Database
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(message)s')
 logging.getLogger("psycopg.pool").setLevel(logging.ERROR)
 
+def resource_path(relative):
+    path = os.path.abspath(relative)
+    return path
+
+def load_product_pixmap(image_path, fallback="resources/picture.png"):
+    pixmap = QPixmap(resource_path(image_path)) if image_path else QPixmap()
+    if pixmap.isNull():
+        pixmap = QPixmap(resource_path(fallback))
+    if pixmap.isNull():
+        pixmap = QPixmap(160, 120)
+        pixmap.fill(Qt.GlobalColor.lightGray)
+    return pixmap
+
 def calculate_discount(old_price, new_price):
     if old_price == 0:
         return 0
     return (old_price - new_price) / old_price * 100
 
-def create_card(product, db):
+def create_card(product, db, main_window):
     card = QWidget()
     card_layout = QHBoxLayout()
 
@@ -27,15 +40,9 @@ def create_card(product, db):
     
     if image_path_from_db:
         full_path = os.path.join("resources", image_path_from_db)
-        if os.path.exists(full_path):
-            pixmap = QPixmap(full_path)
-        else:
-            pixmap = QPixmap("resources/picture.png")
+        pixmap = load_product_pixmap(full_path)
     else:
-        pixmap = QPixmap("resources/picture.png")
-        
-    if pixmap.isNull():
-        pixmap = QPixmap("resources/picture.png")
+        pixmap = load_product_pixmap(None)
         
     image_label.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
     image_label.setFixedSize(100, 100)
@@ -90,13 +97,14 @@ def create_card(product, db):
         discount_label.setStyleSheet("color: #2E8B57; font-weight: bold; font-size: 14px;")
         price_layout.addWidget(discount_label)
 
-    order_btn = QPushButton("Оформить")
+    order_btn = QPushButton("Подробнее")
     if total_quantity == 0:
         order_btn.setEnabled(False)
         order_btn.setText("Нет в наличии")
         order_btn.setStyleSheet("background-color: #cccccc; color: gray; padding: 5px; border-radius: 5px;")
     else:
         order_btn.setStyleSheet("background-color: #70B2AF; color: white; padding: 5px; border-radius: 5px; font-weight: bold;")
+        order_btn.clicked.connect(lambda checked=False, pid=product_id: main_window.open_product_card(pid))
     
     price_layout.addWidget(order_btn)
     card_layout.addLayout(price_layout)
@@ -122,6 +130,47 @@ def create_card(product, db):
         }}
     """)
     return card
+
+class ProductCard(QDialog):
+    def __init__(self, product_id, parent=None):
+        super().__init__(parent)
+        self.product_id = product_id
+        self.db = parent.db if parent is not None else None
+        self.setWindowTitle("Карточка товара")
+        self.resize(400, 500)
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        self.image_label = QLabel()
+        self.image_label.setPixmap(load_product_pixmap(None))
+        self.image_label.setAlignment(Qt.AlignCenter)
+        
+        self.name_label = QLabel(f"Товар ID {self.product_id}")
+        self.name_label.setStyleSheet("font-weight: bold; font-size: 18px;")
+        
+        self.price_label = QLabel("Данные будут загружены в РТ 17")
+        self.description_label = QLabel("Описание будет загружено в РТ 17")
+        
+        self.variant_combo = QComboBox()
+        self.variant_combo.addItem("Варианты будут загружены в РТ 17")
+        
+        self.add_button = QPushButton("В корзину")
+        self.add_button.clicked.connect(self.add_selected_to_cart)
+        
+        layout.addWidget(self.image_label)
+        layout.addWidget(self.name_label)
+        layout.addWidget(self.price_label)
+        layout.addWidget(self.description_label)
+        layout.addWidget(QLabel("Выберите вариант:"))
+        layout.addWidget(self.variant_combo)
+        layout.addWidget(self.add_button)
+
+    def add_selected_to_cart(self):
+        QMessageBox.information(
+            self, "Этап разработки", "Корзина будет подключена в РТ 19"
+        )
 
 class ValidationDialog(QDialog):
     def __init__(self):
@@ -184,11 +233,13 @@ class ValidationDialog(QDialog):
         QMessageBox.information(self, "Успех", "Все данные корректны!")
 
 class MainWindow(QMainWindow):
-    def __init__(self, db, role_id=None, full_name="Гость"):
+    def __init__(self, db, role_id=None, full_name="Гость", user_id=None):
         super().__init__()
         self.db = db
         self.role_id = role_id
         self.full_name = full_name
+        self.user_id = user_id
+        
         self.setWindowTitle("Мир аудиотехники — Каталог")
         self.resize(850, 650)
         self.setWindowIcon(QIcon("resources/icon.ico"))
@@ -213,11 +264,6 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(logo)
         
         header_layout.addStretch()
-        
-        self.back_button = QPushButton("Назад")
-        self.back_button.setStyleSheet("background-color: #70B2AF; color: white; padding: 5px; border-radius: 5px;")
-        self.back_button.clicked.connect(self.go_back)
-        header_layout.addWidget(self.back_button)
 
         role_name = "Гость"
         if self.role_id == 1: role_name = "Администратор"
@@ -244,15 +290,10 @@ class MainWindow(QMainWindow):
         self.test_val_button.setStyleSheet("background-color: #FF8C00; color: white; padding: 5px; border-radius: 5px;")
         self.test_val_button.clicked.connect(self.open_validation_test)
 
-        self.order_button.clicked.connect(self.confirm_order)
-
         button_style = "background-color: #70B2AF; color: white; font-family: Calibri; padding: 8px; border-radius: 5px; font-weight: bold;"
         self.order_button.setStyleSheet(button_style)
         self.manager_button.setStyleSheet(button_style)
         self.admin_button.setStyleSheet(button_style)
-
-        self.manager_button.clicked.connect(lambda: self.switch_page(2))
-        self.admin_button.clicked.connect(lambda: self.switch_page(2))
 
         button_layout.addStretch()
         button_layout.addWidget(self.test_val_button)
@@ -262,11 +303,6 @@ class MainWindow(QMainWindow):
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
 
-        self.stacked_widget = QStackedWidget()
-
-        self.catalog_page = QWidget()
-        catalog_layout = QVBoxLayout(self.catalog_page)
-        
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Поиск по названию или описанию...")
@@ -283,7 +319,7 @@ class MainWindow(QMainWindow):
         self.sort_combo.addItems(["По возрастанию", "По убыванию"])
         self.sort_combo.currentIndexChanged.connect(self.load_products)
         search_layout.addWidget(self.sort_combo)
-        catalog_layout.addLayout(search_layout)
+        main_layout.addLayout(search_layout)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -292,22 +328,7 @@ class MainWindow(QMainWindow):
         self.scroll_layout = QVBoxLayout(self.scroll_content)
         self.scroll_layout.setAlignment(Qt.AlignTop)
         self.scroll_area.setWidget(self.scroll_content)
-        catalog_layout.addWidget(self.scroll_area)
-
-        self.product_page = QWidget()
-        product_layout = QVBoxLayout(self.product_page)
-        product_layout.addWidget(QLabel("Здесь будет карточка товара", alignment=Qt.AlignCenter))
-
-        self.orders_page = QWidget()
-        orders_layout = QVBoxLayout(self.orders_page)
-        orders_layout.addWidget(QLabel("Здесь будет список заказов", alignment=Qt.AlignCenter))
-
-        self.stacked_widget.addWidget(self.catalog_page)
-        self.stacked_widget.addWidget(self.product_page)
-        self.stacked_widget.addWidget(self.orders_page)
-        self.stacked_widget.setCurrentIndex(0)
-
-        main_layout.addWidget(self.stacked_widget)
+        main_layout.addWidget(self.scroll_area)
 
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
@@ -320,20 +341,6 @@ class MainWindow(QMainWindow):
     def open_validation_test(self):
         dialog = ValidationDialog()
         dialog.exec()
-
-    def switch_page(self, index):
-        self.stacked_widget.setCurrentIndex(index)
-        if index == 0:
-            self.setWindowTitle("Мир аудиотехники — Каталог")
-        elif index == 1:
-            self.setWindowTitle("Мир аудиотехники — Карточка товара")
-        elif index == 2:
-            self.setWindowTitle("Мир аудиотехники — Заказы")
-
-    def go_back(self):
-        current_index = self.stacked_widget.currentIndex()
-        if current_index > 0:
-            self.switch_page(current_index - 1)
 
     def load_products(self):
         while self.scroll_layout.count():
@@ -355,7 +362,7 @@ class MainWindow(QMainWindow):
             return
 
         for product in products:
-            card = create_card(product, self.db)
+            card = create_card(product, self.db, self)
             self.scroll_layout.addWidget(card)
 
     def setup_role_interface(self):
@@ -376,8 +383,10 @@ class MainWindow(QMainWindow):
             self.manager_button.hide()
             self.order_button.hide()
 
-    def confirm_order(self):
-        QMessageBox.information(self, "Информация", "Заказ успешно оформлен")
+    def open_product_card(self, product_id):
+        card = ProductCard(product_id, self)
+        card.exec()
+        self.load_products()
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)

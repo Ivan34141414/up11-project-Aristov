@@ -40,7 +40,7 @@ class LoginWindow(QDialog):
     def login_as_guest(self):
         self.accept()
         from main import MainWindow
-        self.main_window = MainWindow(self.db, role_id=None, full_name="Гость")
+        self.main_window = MainWindow(self.db, role_id=None, full_name="Гость", user_id=None)
         self.main_window.show()
 
     def check_login(self):
@@ -78,5 +78,5 @@ class LoginWindow(QDialog):
             
             self.accept()
             from main import MainWindow
-            self.main_window = MainWindow(self.db, role_id=self.role_id, full_name=full_name)
+            self.main_window = MainWindow(self.db, role_id=self.role_id, full_name=full_name, user_id=self.user_id)
             self.main_window.show()

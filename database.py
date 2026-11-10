@@ -97,6 +97,59 @@ class Database:
         finally:
             self.release_connection(conn)
 
+    def get_product_variants(self, product_id):
+        conn = self.get_connection()
+        if not conn:
+            return []
+        try:
+            cursor = conn.cursor()
+            query = """
+                SELECT v.variant_id, v.value, si.quantity, p.price
+                FROM stock_items si
+                JOIN variants v ON si.variant_id = v.variant_id
+                JOIN products p ON si.product_id = p.product_id
+                WHERE si.product_id = %s AND si.quantity > 0
+            """
+            cursor.execute(query, (product_id,))
+            variants = cursor.fetchall()
+            cursor.close()
+            return variants
+        except psycopg.Error as e:
+            print(f"Ошибка получения вариантов: {e}")
+            return []
+        finally:
+            self.release_connection(conn)
+
+    def checkout(self, user_id, cart_items):
+        conn = self.get_connection()
+        if not conn:
+            return False
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO orders (user_id, order_date) VALUES (%s, CURRENT_DATE) RETURNING order_id", (user_id,))
+            order_id = cursor.fetchone()[0]
+            
+            for item in cart_items:
+                cursor.execute(
+                    "INSERT INTO order_items (order_id, product_id, variant_id, quantity, price) VALUES (%s, %s, %s, %s, %s)",
+                    (order_id, item['product_id'], item['variant_id'], item['quantity'], item['price'])
+                )
+                cursor.execute(
+                    "UPDATE stock_items SET quantity = quantity - %s WHERE product_id = %s AND variant_id = %s",
+                    (item['quantity'], item['product_id'], item['variant_id'])
+                )
+            
+            conn.commit()
+            cursor.close()
+            return True
+        except psycopg.Error as e:
+            if conn:
+                conn.rollback()
+            print(f"Ошибка при оформлении заказа: {e}")
+            return False
+        finally:
+            self.release_connection(conn)
+
     def execute_query(self, sql, params=None):
         conn = self.get_connection()
         if not conn:
