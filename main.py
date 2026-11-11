@@ -5,7 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from PySide6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, 
                                QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, 
-                               QLineEdit, QDialog, QFormLayout)
+                               QLineEdit, QDialog, QFormLayout, QSpinBox)
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt
 from database import Database
@@ -136,25 +136,32 @@ class ProductCard(QDialog):
         super().__init__(parent)
         self.product_id = product_id
         self.db = parent.db if parent is not None else None
+        self.product = {}
         self.setWindowTitle("Карточка товара")
-        self.resize(400, 500)
+        self.resize(400, 550)
         self.setup_ui()
+        self.load_product(product_id)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
         self.image_label = QLabel()
-        self.image_label.setPixmap(load_product_pixmap(None))
         self.image_label.setAlignment(Qt.AlignCenter)
         
-        self.name_label = QLabel(f"Товар ID {self.product_id}")
+        self.name_label = QLabel("Загрузка...")
         self.name_label.setStyleSheet("font-weight: bold; font-size: 18px;")
         
-        self.price_label = QLabel("Данные будут загружены в РТ 17")
-        self.description_label = QLabel("Описание будет загружено в РТ 17")
+        self.price_label = QLabel("")
+        self.price_label.setStyleSheet("font-size: 16px; color: #2E8B57;")
         
-        self.variant_combo = QComboBox()
-        self.variant_combo.addItem("Варианты будут загружены в РТ 17")
+        self.description_label = QLabel("")
+        self.description_label.setWordWrap(True)
+        
+        self.size_combo = QComboBox()
+        self.size_combo.currentIndexChanged.connect(self.on_variant_changed)
+        
+        self.quantity_spin = QSpinBox()
+        self.quantity_spin.setMinimum(1)
         
         self.add_button = QPushButton("В корзину")
         self.add_button.clicked.connect(self.add_selected_to_cart)
@@ -164,10 +171,88 @@ class ProductCard(QDialog):
         layout.addWidget(self.price_label)
         layout.addWidget(self.description_label)
         layout.addWidget(QLabel("Выберите вариант:"))
-        layout.addWidget(self.variant_combo)
+        layout.addWidget(self.size_combo)
+        layout.addWidget(QLabel("Количество:"))
+        layout.addWidget(self.quantity_spin)
         layout.addWidget(self.add_button)
 
+    def load_product(self, product_id):
+        if not self.db:
+            return
+        conn = self.db.get_connection()
+        if not conn:
+            return
+            
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT p.name, p.price, p.description, p.image_path,
+            COALESCE(SUM(si.quantity), 0) AS total_quantity
+            FROM products p
+            LEFT JOIN stock_items si ON p.product_id = si.product_id
+            WHERE p.product_id = %s
+            GROUP BY p.product_id
+        """
+        cursor.execute(query, (product_id,))
+        product = cursor.fetchone()
+        
+        if product is None:
+            self.add_button.setEnabled(False)
+            QMessageBox.warning(self, "Товар", "Товар не найден")
+            cursor.close()
+            self.db.release_connection(conn)
+            return
+            
+        name, price, description, image_path, total_quantity = product
+        
+        self.product = {"name": name, "price": price}
+        self.name_label.setText(name)
+        self.price_label.setText(f"{price} ₽")
+        self.description_label.setText(description or "")
+        
+        if image_path:
+            full_path = os.path.join("resources", image_path)
+            self.image_label.setPixmap(load_product_pixmap(full_path).scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            self.image_label.setPixmap(load_product_pixmap(None).scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        
+        cursor.execute(
+            """
+            SELECT v.variant_id, v.value, si.quantity 
+            FROM stock_items si 
+            JOIN variants v ON si.variant_id = v.variant_id 
+            WHERE si.product_id = %s 
+            ORDER BY v.variant_id
+            """, (product_id,)
+        )
+        
+        self.size_combo.clear()
+        variants = cursor.fetchall()
+        for variant_id, value, quantity in variants:
+            self.size_combo.addItem(f"{value} (В наличии: {quantity})", (variant_id, quantity))
+            
+        cursor.close()
+        self.db.release_connection(conn)
+        
+        self.on_variant_changed()
+
+    def on_variant_changed(self, index=0):
+        selected = self.size_combo.currentData()
+        available = max(0, int(selected[1])) if selected else 0
+        
+        if available > 0:
+            self.quantity_spin.setRange(1, available)
+        else:
+            self.quantity_spin.setRange(0, 0)
+            
+        self.add_button.setEnabled(available > 0)
+
     def add_selected_to_cart(self):
+        selected = self.size_combo.currentData()
+        if not selected or self.quantity_spin.value() <= 0:
+            QMessageBox.warning(self, "Остаток", "Нет доступного остатка")
+            return
+            
         QMessageBox.information(
             self, "Этап разработки", "Корзина будет подключена в РТ 19"
         )
@@ -386,7 +471,6 @@ class MainWindow(QMainWindow):
     def open_product_card(self, product_id):
         card = ProductCard(product_id, self)
         card.exec()
-        self.load_products()
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
