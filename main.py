@@ -503,6 +503,23 @@ class MainWindow(QMainWindow):
         self.cart_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         orders_layout.addWidget(self.cart_table)
         
+        self.total_label = QLabel("Итого: 0 ₽")
+        self.total_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #2E8B57; margin-top: 10px;")
+        orders_layout.addWidget(self.total_label)
+        
+        qty_layout = QHBoxLayout()
+        qty_layout.addWidget(QLabel("Новое количество:"))
+        self.qty_change_spin = QSpinBox()
+        self.qty_change_spin.setMinimum(1)
+        self.qty_change_spin.setMaximum(999)
+        qty_layout.addWidget(self.qty_change_spin)
+        
+        self.change_qty_btn = QPushButton("Изменить количество")
+        self.change_qty_btn.setStyleSheet("background-color: #70B2AF; color: white; padding: 10px; border-radius: 5px; font-weight: bold;")
+        self.change_qty_btn.clicked.connect(self.change_quantity)
+        qty_layout.addWidget(self.change_qty_btn)
+        orders_layout.addLayout(qty_layout)
+        
         self.remove_btn = QPushButton("Удалить выбранное")
         self.remove_btn.setStyleSheet("background-color: #ff8080; padding: 10px; border-radius: 5px; font-weight: bold;")
         self.remove_btn.clicked.connect(self.remove_from_cart)
@@ -587,7 +604,6 @@ class MainWindow(QMainWindow):
         card.exec()
 
     def add_to_cart(self, product_id, variant_id, name, quantity, price):
-        from decimal import Decimal
         if quantity <= 0:
             QMessageBox.warning(self, "Количество", "Выберите количество больше 0")
             return
@@ -604,12 +620,37 @@ class MainWindow(QMainWindow):
         identity.setData(Qt.ItemDataRole.UserRole, variant_id)
         self.cart_table.setItem(row, 4, identity)
         
+        self.update_total()
         self.switch_page(2)
+
+    def change_quantity(self):
+        row = self.cart_table.currentRow()
+        if row >= 0:
+            new_quantity = self.qty_change_spin.value()
+            price = Decimal(self.cart_table.item(row, 2).text())
+            self.cart_table.setItem(row, 1, QTableWidgetItem(str(new_quantity)))
+            row_sum = new_quantity * price
+            self.cart_table.setItem(row, 3, QTableWidgetItem(str(row_sum)))
+            self.update_total()
 
     def remove_from_cart(self):
         row = self.cart_table.currentRow()
         if row >= 0:
             self.cart_table.removeRow(row)
+            self.update_total()
+
+    def update_total(self):
+        if self.cart_table.rowCount() == 0:
+            self.total_label.setText("Итого: 0 ₽")
+            return
+            
+        total = Decimal("0")
+        for row in range(self.cart_table.rowCount()):
+            item = self.cart_table.item(row, 3)
+            if item:
+                total += Decimal(item.text())
+                
+        self.total_label.setText(f"Итого: {total} ₽")
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
