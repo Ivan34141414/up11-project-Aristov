@@ -1,14 +1,18 @@
 import sys
 import os
 import logging
+import uuid
+import shutil
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
+from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, 
                                QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, 
-                               QLineEdit, QDialog, QFormLayout, QSpinBox)
+                               QLineEdit, QDialog, QFormLayout, QSpinBox, QFileDialog)
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QStandardPaths
 from database import Database
+import psycopg
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(message)s')
 logging.getLogger("psycopg.pool").setLevel(logging.ERROR)
@@ -138,7 +142,7 @@ class ProductCard(QDialog):
         self.db = parent.db if parent is not None else None
         self.product = {}
         self.setWindowTitle("Карточка товара")
-        self.resize(400, 550)
+        self.resize(400, 600)
         self.setup_ui()
         self.load_product(product_id)
 
@@ -165,8 +169,12 @@ class ProductCard(QDialog):
         
         self.add_button = QPushButton("В корзину")
         self.add_button.clicked.connect(self.add_selected_to_cart)
+
+        self.load_img_btn = QPushButton("Загрузить изображение")
+        self.load_img_btn.clicked.connect(self.load_image)
         
         layout.addWidget(self.image_label)
+        layout.addWidget(self.load_img_btn)
         layout.addWidget(self.name_label)
         layout.addWidget(self.price_label)
         layout.addWidget(self.description_label)
@@ -235,6 +243,49 @@ class ProductCard(QDialog):
         self.db.release_connection(conn)
         
         self.on_variant_changed()
+
+    def load_image(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Выберите изображение", "", "Images (*.png *.jpg *.jpeg)"
+        )
+        if not file_path:
+            return
+            
+        if QPixmap(file_path).isNull():
+            QMessageBox.warning(self, "Изображение", "Файл не является изображением")
+            return
+            
+        base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
+        target = Path(base) / "images" / (uuid.uuid4().hex + Path(file_path).suffix)
+        
+        conn = self.db.get_connection()
+        if not conn:
+            return
+            
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file_path, target)
+            
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE products SET image_path = %s WHERE product_id = %s",
+                (str(target), self.product_id)
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Товар не найден")
+            conn.commit()
+            cursor.close()
+        except (OSError, psycopg.Error, ValueError) as error:
+            conn.rollback()
+            if target.exists():
+                target.unlink()
+            QMessageBox.critical(self, "Изображение не сохранено", str(error))
+            self.db.release_connection(conn)
+            return
+        finally:
+            self.db.release_connection(conn)
+            
+        self.image_label.setPixmap(QPixmap(str(target)).scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def on_variant_changed(self, index=0):
         selected = self.size_combo.currentData()
@@ -471,6 +522,7 @@ class MainWindow(QMainWindow):
     def open_product_card(self, product_id):
         card = ProductCard(product_id, self)
         card.exec()
+        self.load_products()
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -486,6 +538,7 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     from login_window import LoginWindow
     app = QApplication(sys.argv)
+    QApplication.setApplicationName("PP02")
     db = Database()
     app.aboutToQuit.connect(db.close_all)
     window = LoginWindow(db)
