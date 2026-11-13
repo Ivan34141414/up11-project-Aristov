@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, 
                                QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, 
-                               QLineEdit, QDialog, QFormLayout, QSpinBox, QFileDialog)
+                               QLineEdit, QDialog, QFormLayout, QSpinBox, QFileDialog,
+                               QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QStackedWidget)
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtCore import Qt, QStandardPaths
 from database import Database
@@ -304,9 +305,16 @@ class ProductCard(QDialog):
             QMessageBox.warning(self, "Остаток", "Нет доступного остатка")
             return
             
-        QMessageBox.information(
-            self, "Этап разработки", "Корзина будет подключена в РТ 19"
-        )
+        variant_id = selected[0]
+        quantity = self.quantity_spin.value()
+        name = self.product.get("name", "Неизвестно")
+        price = self.product.get("price", 0)
+        product_id = self.product_id
+
+        main_window = self.parent()
+        if main_window and hasattr(main_window, "add_to_cart"):
+            main_window.add_to_cart(product_id, variant_id, name, quantity, price)
+            self.accept()
 
 class ValidationDialog(QDialog):
     def __init__(self):
@@ -401,6 +409,11 @@ class MainWindow(QMainWindow):
         
         header_layout.addStretch()
 
+        self.back_button = QPushButton("Назад")
+        self.back_button.setStyleSheet("background-color: #70B2AF; color: white; padding: 5px; border-radius: 5px; font-weight: bold;")
+        self.back_button.clicked.connect(self.go_back)
+        header_layout.addWidget(self.back_button)
+
         role_name = "Гость"
         if self.role_id == 1: role_name = "Администратор"
         elif self.role_id == 2: role_name = "Менеджер"
@@ -418,7 +431,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(header_widget)
 
         button_layout = QHBoxLayout()
-        self.order_button = QPushButton("Оформить заказ")
+        self.order_button = QPushButton("Корзина")
         self.manager_button = QPushButton("Заказы (менеджер)")
         self.admin_button = QPushButton("Админ-панель")
         
@@ -431,6 +444,10 @@ class MainWindow(QMainWindow):
         self.manager_button.setStyleSheet(button_style)
         self.admin_button.setStyleSheet(button_style)
 
+        self.order_button.clicked.connect(lambda: self.switch_page(2))
+        self.manager_button.clicked.connect(lambda: self.switch_page(2))
+        self.admin_button.clicked.connect(lambda: self.switch_page(2))
+
         button_layout.addStretch()
         button_layout.addWidget(self.test_val_button)
         button_layout.addWidget(self.order_button)
@@ -439,6 +456,11 @@ class MainWindow(QMainWindow):
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
 
+        self.stacked_widget = QStackedWidget()
+
+        self.catalog_page = QWidget()
+        catalog_layout = QVBoxLayout(self.catalog_page)
+        
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Поиск по названию или описанию...")
@@ -455,7 +477,7 @@ class MainWindow(QMainWindow):
         self.sort_combo.addItems(["По возрастанию", "По убыванию"])
         self.sort_combo.currentIndexChanged.connect(self.load_products)
         search_layout.addWidget(self.sort_combo)
-        main_layout.addLayout(search_layout)
+        catalog_layout.addLayout(search_layout)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -464,7 +486,34 @@ class MainWindow(QMainWindow):
         self.scroll_layout = QVBoxLayout(self.scroll_content)
         self.scroll_layout.setAlignment(Qt.AlignTop)
         self.scroll_area.setWidget(self.scroll_content)
-        main_layout.addWidget(self.scroll_area)
+        catalog_layout.addWidget(self.scroll_area)
+
+        self.product_page = QWidget()
+        product_layout = QVBoxLayout(self.product_page)
+        product_layout.addWidget(QLabel("Здесь будет карточка товара", alignment=Qt.AlignCenter))
+
+        self.orders_page = QWidget()
+        orders_layout = QVBoxLayout(self.orders_page)
+        
+        self.cart_table = QTableWidget()
+        self.cart_table.setColumnCount(5)
+        self.cart_table.setHorizontalHeaderLabels(["Наименование", "Количество", "Цена", "Сумма", "ID"])
+        self.cart_table.setColumnHidden(4, True)
+        self.cart_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.cart_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        orders_layout.addWidget(self.cart_table)
+        
+        self.remove_btn = QPushButton("Удалить выбранное")
+        self.remove_btn.setStyleSheet("background-color: #ff8080; padding: 10px; border-radius: 5px; font-weight: bold;")
+        self.remove_btn.clicked.connect(self.remove_from_cart)
+        orders_layout.addWidget(self.remove_btn)
+
+        self.stacked_widget.addWidget(self.catalog_page)
+        self.stacked_widget.addWidget(self.product_page)
+        self.stacked_widget.addWidget(self.orders_page)
+        self.stacked_widget.setCurrentIndex(0)
+
+        main_layout.addWidget(self.stacked_widget)
 
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
@@ -477,6 +526,20 @@ class MainWindow(QMainWindow):
     def open_validation_test(self):
         dialog = ValidationDialog()
         dialog.exec()
+
+    def switch_page(self, index):
+        self.stacked_widget.setCurrentIndex(index)
+        if index == 0:
+            self.setWindowTitle("Мир аудиотехники — Каталог")
+        elif index == 1:
+            self.setWindowTitle("Мир аудиотехники — Карточка товара")
+        elif index == 2:
+            self.setWindowTitle("Мир аудиотехники — Корзина")
+
+    def go_back(self):
+        current_index = self.stacked_widget.currentIndex()
+        if current_index > 0:
+            self.switch_page(current_index - 1)
 
     def load_products(self):
         while self.scroll_layout.count():
@@ -522,7 +585,31 @@ class MainWindow(QMainWindow):
     def open_product_card(self, product_id):
         card = ProductCard(product_id, self)
         card.exec()
-        self.load_products()
+
+    def add_to_cart(self, product_id, variant_id, name, quantity, price):
+        from decimal import Decimal
+        if quantity <= 0:
+            QMessageBox.warning(self, "Количество", "Выберите количество больше 0")
+            return
+
+        price = Decimal(str(price))
+        row = self.cart_table.rowCount()
+        self.cart_table.insertRow(row)
+        self.cart_table.setItem(row, 0, QTableWidgetItem(name))
+        self.cart_table.setItem(row, 1, QTableWidgetItem(str(quantity)))
+        self.cart_table.setItem(row, 2, QTableWidgetItem(str(price)))
+        self.cart_table.setItem(row, 3, QTableWidgetItem(str(quantity * price)))
+
+        identity = QTableWidgetItem(str(product_id))
+        identity.setData(Qt.ItemDataRole.UserRole, variant_id)
+        self.cart_table.setItem(row, 4, identity)
+        
+        self.switch_page(2)
+
+    def remove_from_cart(self):
+        row = self.cart_table.currentRow()
+        if row >= 0:
+            self.cart_table.removeRow(row)
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
