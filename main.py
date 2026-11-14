@@ -143,7 +143,7 @@ class ProductCard(QDialog):
         self.db = parent.db if parent is not None else None
         self.product = {}
         self.setWindowTitle("Карточка товара")
-        self.resize(400, 600)
+        self.resize(400, 650)
         self.setup_ui()
         self.load_product(product_id)
 
@@ -173,6 +173,10 @@ class ProductCard(QDialog):
 
         self.load_img_btn = QPushButton("Загрузить изображение")
         self.load_img_btn.clicked.connect(self.load_image)
+
+        self.delete_button = QPushButton("Удалить товар")
+        self.delete_button.setStyleSheet("background-color: #ff8080; color: white; font-weight: bold; padding: 8px; border-radius: 5px;")
+        self.delete_button.clicked.connect(self.delete_product)
         
         layout.addWidget(self.image_label)
         layout.addWidget(self.load_img_btn)
@@ -184,6 +188,7 @@ class ProductCard(QDialog):
         layout.addWidget(QLabel("Количество:"))
         layout.addWidget(self.quantity_spin)
         layout.addWidget(self.add_button)
+        layout.addWidget(self.delete_button)
 
     def load_product(self, product_id):
         if not self.db:
@@ -207,6 +212,7 @@ class ProductCard(QDialog):
         
         if product is None:
             self.add_button.setEnabled(False)
+            self.delete_button.setEnabled(False)
             QMessageBox.warning(self, "Товар", "Товар не найден")
             cursor.close()
             self.db.release_connection(conn)
@@ -287,6 +293,42 @@ class ProductCard(QDialog):
             self.db.release_connection(conn)
             
         self.image_label.setPixmap(QPixmap(str(target)).scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def delete_product(self):
+        reply = QMessageBox.question(
+            self, "Удаление", "Вы уверены, что хотите удалить товар?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        conn = self.db.get_connection()
+        if not conn:
+            return
+
+        try:
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT 1 FROM order_items WHERE product_id = %s LIMIT 1", (self.product_id,))
+            if cursor.fetchone():
+                QMessageBox.critical(self, "Ошибка", "Товар нельзя удалить: он есть в заказах")
+                return
+
+            cursor.execute("DELETE FROM stock_items WHERE product_id = %s", (self.product_id,))
+            cursor.execute("DELETE FROM products WHERE product_id = %s", (self.product_id,))
+            conn.commit()
+            
+            QMessageBox.information(self, "Успех", "Товар удалён")
+            
+            if self.parent():
+                self.parent().load_products()
+            self.accept()
+
+        except Exception as e:
+            conn.rollback()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
+        finally:
+            self.db.release_connection(conn)
 
     def on_variant_changed(self, index=0):
         selected = self.size_combo.currentData()
