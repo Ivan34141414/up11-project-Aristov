@@ -686,6 +686,26 @@ class MainWindow(QMainWindow):
 
         try:
             with conn.cursor() as cursor:
+                for row in range(self.cart_table.rowCount()):
+                    identity = self.cart_table.item(row, 4)
+                    quantity_item = self.cart_table.item(row, 1)
+                    if any(x is None for x in (identity, quantity_item)):
+                        raise ValueError("В позиции отсутствует ID или количество")
+                    
+                    product_id = int(identity.text())
+                    variant_id = int(identity.data(Qt.ItemDataRole.UserRole))
+                    quantity = int(quantity_item.text())
+
+                    cursor.execute(
+                        "SELECT quantity FROM stock_items WHERE product_id = %s AND variant_id = %s",
+                        (product_id, variant_id)
+                    )
+                    stock_res = cursor.fetchone()
+                    stock = stock_res[0] if stock_res else 0
+
+                    if stock < quantity:
+                        raise ValueError(f"Недостаточно товара (ID {product_id}) на складе")
+
                 cursor.execute(
                     "INSERT INTO orders (order_date, user_id, status) "
                     "VALUES (CURRENT_DATE, %s, %s) RETURNING order_id",
@@ -698,26 +718,10 @@ class MainWindow(QMainWindow):
                     quantity_item = self.cart_table.item(row, 1)
                     price_item = self.cart_table.item(row, 2)
 
-                    if any(x is None for x in (identity, quantity_item, price_item)):
-                        raise ValueError("В позиции отсутствует ID, количество или цена")
-
                     product_id = int(identity.text())
                     variant_id = int(identity.data(Qt.ItemDataRole.UserRole))
                     quantity = int(quantity_item.text())
                     price = Decimal(price_item.text())
-
-                    if quantity <= 0 or not price.is_finite() or price < 0:
-                        raise ValueError("Некорректное количество или цена")
-
-                    cursor.execute(
-                        "UPDATE stock_items SET quantity = quantity - %s "
-                        "WHERE product_id = %s AND variant_id = %s "
-                        "AND quantity >= %s",
-                        (quantity, product_id, variant_id, quantity)
-                    )
-
-                    if cursor.rowcount != 1:
-                        raise ValueError("Недостаточный остаток выбранного варианта")
 
                     cursor.execute(
                         "INSERT INTO order_items "
@@ -725,6 +729,15 @@ class MainWindow(QMainWindow):
                         "VALUES (%s, %s, %s, %s, %s)",
                         (order_id, product_id, variant_id, quantity, price)
                     )
+
+                    cursor.execute(
+                        "UPDATE stock_items SET quantity = quantity - %s "
+                        "WHERE product_id = %s AND variant_id = %s",
+                        (quantity, product_id, variant_id)
+                    )
+
+                    if cursor.rowcount == 0:
+                        raise ValueError(f"Нет остатков для товара (ID {product_id})")
 
             conn.commit()
         except (psycopg.Error, ValueError, TypeError, ArithmeticError) as error:
