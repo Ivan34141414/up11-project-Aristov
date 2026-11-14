@@ -44,10 +44,14 @@ class LoginWindow(QDialog):
         self.main_window.show()
 
     def check_login(self):
-        login = self.login_input.text()
+        login = self.login_input.text().strip()
         
         if not login:
-            QMessageBox.critical(self, "Ошибка", "Введите логин")
+            QMessageBox.critical(self, "Ошибка", "Введите логин (пробелы не считаются)")
+            return
+
+        if len(login) < 3:
+            QMessageBox.critical(self, "Ошибка", "Логин должен содержать минимум 3 символа")
             return
 
         conn = self.db.get_connection()

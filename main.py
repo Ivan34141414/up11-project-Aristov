@@ -342,6 +342,11 @@ class ProductCard(QDialog):
         self.add_button.setEnabled(available > 0)
 
     def add_selected_to_cart(self):
+        main_window = self.parent()
+        if main_window and getattr(main_window, 'user_id', None) is None:
+            QMessageBox.warning(self, "Ошибка", "Войдите в систему, чтобы добавлять товары в корзину")
+            return
+
         selected = self.size_combo.currentData()
         if not selected or self.quantity_spin.value() <= 0:
             QMessageBox.warning(self, "Остаток", "Нет доступного остатка")
@@ -353,7 +358,6 @@ class ProductCard(QDialog):
         price = self.product.get("price", 0)
         product_id = self.product_id
 
-        main_window = self.parent()
         if main_window and hasattr(main_window, "add_to_cart"):
             main_window.add_to_cart(product_id, variant_id, name, quantity, price)
             self.accept()
@@ -641,18 +645,26 @@ class MainWindow(QMainWindow):
             self.admin_button.show()
             self.manager_button.show()
             self.order_button.hide()
+            self.checkout_btn.show()
+            self.status_combo.setEnabled(True)
         elif self.role_id == 2:
             self.admin_button.hide()
             self.manager_button.show()
             self.order_button.hide()
+            self.checkout_btn.show()
+            self.status_combo.setEnabled(True)
         elif self.role_id == 3:
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.show()
+            self.checkout_btn.show()
+            self.status_combo.setEnabled(False)
         else:
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.hide()
+            self.checkout_btn.hide()
+            self.status_combo.setEnabled(False)
 
     def open_product_card(self, product_id):
         card = ProductCard(product_id, self)
