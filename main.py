@@ -525,6 +525,19 @@ class MainWindow(QMainWindow):
         self.remove_btn.clicked.connect(self.remove_from_cart)
         orders_layout.addWidget(self.remove_btn)
 
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(QLabel("Статус заказа:"))
+        self.status_combo = QComboBox()
+        self.status_combo.addItems(["Новый", "В обработке", "Завершён"])
+        self.status_combo.setCurrentText("Новый")
+        status_layout.addWidget(self.status_combo)
+        orders_layout.addLayout(status_layout)
+
+        self.checkout_btn = QPushButton("Подтвердить заказ")
+        self.checkout_btn.setStyleSheet("background-color: #2E8B57; color: white; padding: 15px; border-radius: 5px; font-weight: bold; font-size: 16px;")
+        self.checkout_btn.clicked.connect(self.confirm_order)
+        orders_layout.addWidget(self.checkout_btn)
+
         self.stacked_widget.addWidget(self.catalog_page)
         self.stacked_widget.addWidget(self.product_page)
         self.stacked_widget.addWidget(self.orders_page)
@@ -651,6 +664,89 @@ class MainWindow(QMainWindow):
                 total += Decimal(item.text())
                 
         self.total_label.setText(f"Итого: {total} ₽")
+
+    def confirm_order(self):
+        if self.user_id is None:
+            QMessageBox.warning(self, "Заказ", "Сначала войдите в систему")
+            return
+
+        if self.cart_table.rowCount() == 0:
+            QMessageBox.warning(self, "Заказ", "Корзина пуста")
+            return
+
+        status = self.status_combo.currentText()
+        if status not in ("Новый", "В обработке", "Завершён"):
+            QMessageBox.warning(self, "Заказ", "Выберите статус")
+            return
+
+        conn = self.db.get_connection()
+        if not conn:
+            QMessageBox.critical(self, "Ошибка", "Нет подключения к БД")
+            return
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO orders (order_date, user_id, status) "
+                    "VALUES (CURRENT_DATE, %s, %s) RETURNING order_id",
+                    (self.user_id, status)
+                )
+                order_id = cursor.fetchone()[0]
+
+                for row in range(self.cart_table.rowCount()):
+                    identity = self.cart_table.item(row, 4)
+                    quantity_item = self.cart_table.item(row, 1)
+                    price_item = self.cart_table.item(row, 2)
+
+                    if any(x is None for x in (identity, quantity_item, price_item)):
+                        raise ValueError("В позиции отсутствует ID, количество или цена")
+
+                    product_id = int(identity.text())
+                    variant_id = int(identity.data(Qt.ItemDataRole.UserRole))
+                    quantity = int(quantity_item.text())
+                    price = Decimal(price_item.text())
+
+                    if quantity <= 0 or not price.is_finite() or price < 0:
+                        raise ValueError("Некорректное количество или цена")
+
+                    cursor.execute(
+                        "UPDATE stock_items SET quantity = quantity - %s "
+                        "WHERE product_id = %s AND variant_id = %s "
+                        "AND quantity >= %s",
+                        (quantity, product_id, variant_id, quantity)
+                    )
+
+                    if cursor.rowcount != 1:
+                        raise ValueError("Недостаточный остаток выбранного варианта")
+
+                    cursor.execute(
+                        "INSERT INTO order_items "
+                        "(order_id, product_id, variant_id, quantity, price) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        (order_id, product_id, variant_id, quantity, price)
+                    )
+
+            conn.commit()
+        except (psycopg.Error, ValueError, TypeError, ArithmeticError) as error:
+            conn.rollback()
+            QMessageBox.critical(self, "Заказ не сохранён", str(error))
+            return
+        finally:
+            self.db.release_connection(conn)
+
+        self.cart_table.setRowCount(0)
+        self.update_total()
+
+        QMessageBox.information(self, "Заказ", f"Заказ №{order_id} сохранён")
+
+        try:
+            self.load_products()
+        except Exception:
+            QMessageBox.warning(
+                self, "Обновление каталога",
+                "Заказ сохранён. Обновите каталог перед следующей покупкой."
+            )
+        self.switch_page(0)
 
     def logout(self):
         reply = QMessageBox.question(self, "Выход", "Вы уверены, что хотите выйти?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
