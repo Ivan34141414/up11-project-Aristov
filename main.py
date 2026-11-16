@@ -541,6 +541,21 @@ class MainWindow(QMainWindow):
         self.orders_page = QWidget()
         orders_layout = QVBoxLayout(self.orders_page)
         
+        self.role_stack = QStackedWidget()
+        
+        self.manager_page = QWidget()
+        manager_layout = QVBoxLayout(self.manager_page)
+        manager_layout.addWidget(QLabel("Панель Менеджера", alignment=Qt.AlignCenter))
+        
+        self.admin_page = QWidget()
+        admin_layout = QVBoxLayout(self.admin_page)
+        admin_layout.addWidget(QLabel("Панель Администратора", alignment=Qt.AlignCenter))
+        
+        self.role_stack.addWidget(self.manager_page)
+        self.role_stack.addWidget(self.admin_page)
+        
+        orders_layout.addWidget(self.role_stack)
+        
         self.cart_table = QTableWidget()
         self.cart_table.setColumnCount(5)
         self.cart_table.setHorizontalHeaderLabels(["Наименование", "Количество", "Цена", "Сумма", "ID"])
@@ -647,24 +662,30 @@ class MainWindow(QMainWindow):
             self.order_button.hide()
             self.checkout_btn.show()
             self.status_combo.setEnabled(True)
+            self.role_stack.setCurrentIndex(1)
+            self.role_stack.show()
         elif self.role_id == 2:
             self.admin_button.hide()
             self.manager_button.show()
             self.order_button.hide()
             self.checkout_btn.show()
             self.status_combo.setEnabled(True)
+            self.role_stack.setCurrentIndex(0)
+            self.role_stack.show()
         elif self.role_id == 3:
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.show()
             self.checkout_btn.show()
             self.status_combo.setEnabled(False)
+            self.role_stack.hide()
         else:
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.hide()
             self.checkout_btn.hide()
             self.status_combo.setEnabled(False)
+            self.role_stack.hide()
 
     def open_product_card(self, product_id):
         card = ProductCard(product_id, self)
