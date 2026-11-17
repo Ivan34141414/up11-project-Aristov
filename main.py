@@ -541,13 +541,14 @@ class MainWindow(QMainWindow):
         self.orders_page = QWidget()
         orders_layout = QVBoxLayout(self.orders_page)
         
-        self.orders_button = QPushButton("Заказы")
-        self.add_order_button = QPushButton("Добавить заказ")
-        self.edit_order_button = QPushButton("Редактировать заказ")
-        
-        orders_layout.addWidget(self.orders_button)
-        orders_layout.addWidget(self.add_order_button)
-        orders_layout.addWidget(self.edit_order_button)
+        self.orders_table = QTableWidget()
+        self.orders_table.setColumnCount(4)
+        self.orders_table.setHorizontalHeaderLabels(["Дата", "ФИО клиента", "Сумма", "Статус"])
+        self.orders_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.orders_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.orders_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.orders_table.cellClicked.connect(self.on_order_click)
+        orders_layout.addWidget(self.orders_table)
         
         self.cart_table = QTableWidget()
         self.cart_table.setColumnCount(5)
@@ -562,7 +563,8 @@ class MainWindow(QMainWindow):
         orders_layout.addWidget(self.total_label)
         
         qty_layout = QHBoxLayout()
-        qty_layout.addWidget(QLabel("Новое количество:"))
+        self.qty_label = QLabel("Новое количество:")
+        qty_layout.addWidget(self.qty_label)
         self.qty_change_spin = QSpinBox()
         self.qty_change_spin.setMinimum(1)
         self.qty_change_spin.setMaximum(999)
@@ -580,7 +582,8 @@ class MainWindow(QMainWindow):
         orders_layout.addWidget(self.remove_btn)
 
         status_layout = QHBoxLayout()
-        status_layout.addWidget(QLabel("Статус заказа:"))
+        self.status_label = QLabel("Статус заказа:")
+        status_layout.addWidget(self.status_label)
         self.status_combo = QComboBox()
         self.status_combo.addItems(["Новый", "В обработке", "Завершён"])
         self.status_combo.setCurrentText("Новый")
@@ -618,7 +621,9 @@ class MainWindow(QMainWindow):
         elif index == 1:
             self.setWindowTitle("Мир аудиотехники — Карточка товара")
         elif index == 2:
-            self.setWindowTitle("Мир аудиотехники — Корзина")
+            self.setWindowTitle("Мир аудиотехники — Заказы")
+            if self.role_id in (1, 2):
+                self.load_orders()
 
     def go_back(self):
         current_index = self.stacked_widget.currentIndex()
@@ -648,47 +653,112 @@ class MainWindow(QMainWindow):
             card = create_card(product, self.db, self)
             self.scroll_layout.addWidget(card)
 
+    def load_orders(self):
+        if self.role_id not in (1, 2):
+            return
+        conn = self.db.get_connection()
+        if not conn:
+            return
+        try:
+            cursor = conn.cursor()
+            query = """
+                SELECT o.order_id, o.order_date, 
+                CONCAT_WS(' ', u.last_name, u.first_name, u.middle_name) AS full_name, 
+                COALESCE(SUM(oi.quantity * oi.price), 0) AS total, 
+                o.status 
+                FROM orders o 
+                LEFT JOIN users u ON o.user_id = u.user_id 
+                LEFT JOIN order_items oi ON o.order_id = oi.order_id 
+                GROUP BY o.order_id, u.last_name, u.first_name, u.middle_name, o.status 
+                ORDER BY o.order_date DESC
+            """
+            cursor.execute(query)
+            orders = cursor.fetchall()
+            
+            self.orders_table.setRowCount(len(orders))
+            for row, order in enumerate(orders):
+                date_item = QTableWidgetItem(str(order[1]))
+                date_item.setData(Qt.ItemDataRole.UserRole, order[0])
+                self.orders_table.setItem(row, 0, date_item)
+                self.orders_table.setItem(row, 1, QTableWidgetItem(order[2] or "Неизвестно"))
+                self.orders_table.setItem(row, 2, QTableWidgetItem(str(order[3])))
+                self.orders_table.setItem(row, 3, QTableWidgetItem(order[4] or "Новый"))
+            cursor.close()
+        except Exception as e:
+            print(f"Ошибка загрузки заказов: {e}")
+        finally:
+            self.db.release_connection(conn)
+
+    def on_order_click(self, row, column):
+        item = self.orders_table.item(row, 0)
+        if item:
+            order_id = item.data(Qt.ItemDataRole.UserRole)
+            QMessageBox.information(self, "Состав заказа", f"Открытие состава для заказа №{order_id} (будет реализовано в РТ 37)")
+
     def setup_role_interface(self):
         if self.role_id == 1:
             self.admin_button.show()
             self.manager_button.show()
             self.order_button.hide()
-            self.checkout_btn.show()
-            self.status_combo.setEnabled(True)
             
-            self.orders_button.show()
-            self.add_order_button.show()
-            self.edit_order_button.show()
+            self.orders_table.show()
+            self.cart_table.hide()
+            self.total_label.hide()
+            self.qty_label.hide()
+            self.qty_change_spin.hide()
+            self.change_qty_btn.hide()
+            self.remove_btn.hide()
+            self.status_label.hide()
+            self.status_combo.hide()
+            self.checkout_btn.hide()
+            
         elif self.role_id == 2:
             self.admin_button.hide()
             self.manager_button.show()
             self.order_button.hide()
-            self.checkout_btn.show()
-            self.status_combo.setEnabled(True)
             
-            self.orders_button.show()
-            self.add_order_button.show()
-            self.edit_order_button.hide()
+            self.orders_table.show()
+            self.cart_table.hide()
+            self.total_label.hide()
+            self.qty_label.hide()
+            self.qty_change_spin.hide()
+            self.change_qty_btn.hide()
+            self.remove_btn.hide()
+            self.status_label.hide()
+            self.status_combo.hide()
+            self.checkout_btn.hide()
+            
         elif self.role_id == 3:
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.show()
-            self.checkout_btn.show()
-            self.status_combo.setEnabled(False)
             
-            self.orders_button.hide()
-            self.add_order_button.hide()
-            self.edit_order_button.hide()
+            self.orders_table.hide()
+            self.cart_table.show()
+            self.total_label.show()
+            self.qty_label.show()
+            self.qty_change_spin.show()
+            self.change_qty_btn.show()
+            self.remove_btn.show()
+            self.status_label.show()
+            self.status_combo.show()
+            self.checkout_btn.show()
+            
         else:
             self.admin_button.hide()
             self.manager_button.hide()
             self.order_button.hide()
-            self.checkout_btn.hide()
-            self.status_combo.setEnabled(False)
             
-            self.orders_button.hide()
-            self.add_order_button.hide()
-            self.edit_order_button.hide()
+            self.orders_table.hide()
+            self.cart_table.hide()
+            self.total_label.hide()
+            self.qty_label.hide()
+            self.qty_change_spin.hide()
+            self.change_qty_btn.hide()
+            self.remove_btn.hide()
+            self.status_label.hide()
+            self.status_combo.hide()
+            self.checkout_btn.hide()
 
     def open_product_card(self, product_id):
         card = ProductCard(product_id, self)
