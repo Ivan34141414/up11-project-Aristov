@@ -362,6 +362,84 @@ class ProductCard(QDialog):
             main_window.add_to_cart(product_id, variant_id, name, quantity, price)
             self.accept()
 
+class OrderDetailsDialog(QDialog):
+    def __init__(self, order_id, parent=None):
+        super().__init__(parent)
+        self.order_id = order_id
+        self.db = parent.db if parent is not None else None
+        self.setWindowTitle(f"Состав заказа №{order_id}")
+        self.resize(600, 400)
+        self.setup_ui()
+        self.load_order_details(order_id)
+        self.load_total(order_id)
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        self.details_table = QTableWidget()
+        self.details_table.setColumnCount(4)
+        self.details_table.setHorizontalHeaderLabels(["Наименование", "Количество", "Цена", "Сумма"])
+        self.details_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.details_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        layout.addWidget(self.details_table)
+        
+        self.total_label = QLabel("Итого: 0 ₽")
+        self.total_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2E8B57; margin-top: 10px;")
+        layout.addWidget(self.total_label)
+
+    def load_order_details(self, order_id):
+        if not order_id or not self.db:
+            return
+            
+        conn = self.db.get_connection()
+        if not conn:
+            return
+            
+        try:
+            cursor = conn.cursor()
+            query = """
+                SELECT COALESCE(p.name, 'Товар удален') AS name, 
+                oi.quantity, oi.price, (oi.quantity * oi.price) AS total 
+                FROM order_items oi 
+                LEFT JOIN products p ON oi.product_id = p.product_id 
+                WHERE oi.order_id = %s
+            """
+            cursor.execute(query, (order_id,))
+            items = cursor.fetchall()
+            
+            self.details_table.setRowCount(len(items))
+            for row, item in enumerate(items):
+                self.details_table.setItem(row, 0, QTableWidgetItem(item[0]))
+                self.details_table.setItem(row, 1, QTableWidgetItem(str(item[1])))
+                self.details_table.setItem(row, 2, QTableWidgetItem(str(item[2])))
+                self.details_table.setItem(row, 3, QTableWidgetItem(str(item[3])))
+                
+            cursor.close()
+        except Exception as e:
+            print(f"Ошибка загрузки состава: {e}")
+        finally:
+            self.db.release_connection(conn)
+
+    def load_total(self, order_id):
+        if not order_id or not self.db:
+            return
+            
+        conn = self.db.get_connection()
+        if not conn:
+            return
+            
+        try:
+            cursor = conn.cursor()
+            query = "SELECT COALESCE(SUM(quantity * price), 0) AS total FROM order_items WHERE order_id = %s"
+            cursor.execute(query, (order_id,))
+            total = cursor.fetchone()[0]
+            self.total_label.setText(f"Итого: {total} ₽")
+            cursor.close()
+        except Exception as e:
+            print(f"Ошибка подсчета суммы: {e}")
+        finally:
+            self.db.release_connection(conn)
+
 class ValidationDialog(QDialog):
     def __init__(self):
         super().__init__()
@@ -693,7 +771,8 @@ class MainWindow(QMainWindow):
         item = self.orders_table.item(row, 0)
         if item:
             order_id = item.data(Qt.ItemDataRole.UserRole)
-            QMessageBox.information(self, "Состав заказа", f"Открытие состава для заказа №{order_id} (будет реализовано в РТ 37)")
+            dialog = OrderDetailsDialog(order_id, self)
+            dialog.exec()
 
     def setup_role_interface(self):
         if self.role_id == 1:
