@@ -6,8 +6,8 @@ import shutil
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from pathlib import Path
-from PySide6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, 
-                               QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox, 
+from PySide6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout,
+                               QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox,
                                QLineEdit, QDialog, QFormLayout, QSpinBox, QFileDialog,
                                QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QStackedWidget)
 from PySide6.QtGui import QIcon, QPixmap
@@ -18,9 +18,11 @@ import psycopg
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(message)s')
 logging.getLogger("psycopg.pool").setLevel(logging.ERROR)
 
+
 def resource_path(relative):
     path = os.path.abspath(relative)
     return path
+
 
 def load_product_pixmap(image_path, fallback="resources/picture.png"):
     pixmap = QPixmap(resource_path(image_path)) if image_path else QPixmap()
@@ -31,10 +33,12 @@ def load_product_pixmap(image_path, fallback="resources/picture.png"):
         pixmap.fill(Qt.GlobalColor.lightGray)
     return pixmap
 
+
 def calculate_discount(old_price, new_price):
     if old_price == 0:
         return 0
     return (old_price - new_price) / old_price * 100
+
 
 def create_card(product, db, main_window):
     card = QWidget()
@@ -42,13 +46,13 @@ def create_card(product, db, main_window):
 
     image_label = QLabel()
     image_path_from_db = product[7]
-    
+
     if image_path_from_db:
         full_path = os.path.join("resources", image_path_from_db)
         pixmap = load_product_pixmap(full_path)
     else:
         pixmap = load_product_pixmap(None)
-        
+
     image_label.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
     image_label.setFixedSize(100, 100)
     card_layout.addWidget(image_label)
@@ -62,10 +66,10 @@ def create_card(product, db, main_window):
 
     category = product[2] if product[2] else "Без категории"
     text_layout.addWidget(QLabel(f"Категория: {category}"))
-    
+
     material = product[4] if product[4] else "Не указан"
     text_layout.addWidget(QLabel(f"Состав: {material}"))
-    
+
     total_quantity = product[8]
     text_layout.addWidget(QLabel(f"Количество: {total_quantity} шт."))
     card_layout.addLayout(text_layout)
@@ -73,7 +77,7 @@ def create_card(product, db, main_window):
     product_id = product[0]
     base_price = float(product[6])
     orders_count = product[9]
-    
+
     if orders_count == 0:
         new_price_dec = Decimal(str(base_price)) * Decimal('0.75')
         new_price = float(new_price_dec.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
@@ -89,7 +93,7 @@ def create_card(product, db, main_window):
         old_price_label = QLabel(f"<s>{base_price} ₽</s>")
         old_price_label.setStyleSheet("color: red; font-size: 14px;")
         price_layout.addWidget(old_price_label)
-    
+
     new_price_label = QLabel(f"{new_price} ₽")
     if discount_percent > 15:
         new_price_label.setStyleSheet("font-size: 18px; color: #2E8B57; font-weight: bold;")
@@ -110,7 +114,7 @@ def create_card(product, db, main_window):
     else:
         order_btn.setStyleSheet("background-color: #70B2AF; color: white; padding: 5px; border-radius: 5px; font-weight: bold;")
         order_btn.clicked.connect(lambda checked=False, pid=product_id: main_window.open_product_card(pid))
-    
+
     price_layout.addWidget(order_btn)
     card_layout.addLayout(price_layout)
     card.setLayout(card_layout)
@@ -121,7 +125,7 @@ def create_card(product, db, main_window):
         bg_color = "#FF8080"
     else:
         bg_color = "#D2F6E7"
-        
+
     card.setObjectName("ProductCard")
     card.setStyleSheet(f"""
         QWidget#ProductCard {{
@@ -136,6 +140,72 @@ def create_card(product, db, main_window):
     """)
     return card
 
+
+class AddOrderDialog(QDialog):
+    def __init__(self, db, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.setWindowTitle("Добавить заказ")
+        self.resize(350, 220)
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        self.client_combo = QComboBox()
+        conn = self.db.get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT user_id, CONCAT_WS(' ', last_name, first_name) FROM users WHERE role_id = 3")
+                for user in cursor.fetchall():
+                    self.client_combo.addItem(user[1], user[0])
+                cursor.close()
+            finally:
+                self.db.release_connection(conn)
+
+        self.status_combo = QComboBox()
+        self.status_combo.addItems(["Новый", "В обработке", "Завершён"])
+        self.status_combo.setCurrentIndex(0)
+
+        self.save_button = QPushButton("Сохранить")
+        self.save_button.clicked.connect(self.save_order)
+
+        self.cancel_button = QPushButton("Отмена")
+        self.cancel_button.clicked.connect(self.reject)
+
+        layout.addWidget(QLabel("Клиент:"))
+        layout.addWidget(self.client_combo)
+        layout.addWidget(QLabel("Статус:"))
+        layout.addWidget(self.status_combo)
+        layout.addWidget(self.save_button)
+        layout.addWidget(self.cancel_button)
+
+    def save_order(self):
+        conn = self.db.get_connection()
+        if not conn:
+            QMessageBox.critical(self, "Ошибка", "Нет подключения к БД")
+            return
+        try:
+            cursor = conn.cursor()
+            user_id = self.client_combo.currentData()
+            status = self.status_combo.currentText()
+            cursor.execute(
+                "INSERT INTO orders (order_date, user_id, status) VALUES (%s, %s, %s) RETURNING order_id",
+                (datetime.now().date(), user_id, status)
+            )
+            order_id = cursor.fetchone()[0]
+            conn.commit()
+            cursor.close()
+            QMessageBox.information(self, "Успех", "Заказ добавлен")
+            self.accept()
+        except Exception as e:
+            conn.rollback()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
+        finally:
+            self.db.release_connection(conn)
+
+
 class ProductCard(QDialog):
     def __init__(self, product_id, parent=None):
         super().__init__(parent)
@@ -149,25 +219,25 @@ class ProductCard(QDialog):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
+
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
-        
+
         self.name_label = QLabel("Загрузка...")
         self.name_label.setStyleSheet("font-weight: bold; font-size: 18px;")
-        
+
         self.price_label = QLabel("")
         self.price_label.setStyleSheet("font-size: 16px; color: #2E8B57;")
-        
+
         self.description_label = QLabel("")
         self.description_label.setWordWrap(True)
-        
+
         self.size_combo = QComboBox()
         self.size_combo.currentIndexChanged.connect(self.on_variant_changed)
-        
+
         self.quantity_spin = QSpinBox()
         self.quantity_spin.setMinimum(1)
-        
+
         self.add_button = QPushButton("В корзину")
         self.add_button.clicked.connect(self.add_selected_to_cart)
 
@@ -177,7 +247,7 @@ class ProductCard(QDialog):
         self.delete_button = QPushButton("Удалить товар")
         self.delete_button.setStyleSheet("background-color: #ff8080; color: white; font-weight: bold; padding: 8px; border-radius: 5px;")
         self.delete_button.clicked.connect(self.delete_product)
-        
+
         layout.addWidget(self.image_label)
         layout.addWidget(self.load_img_btn)
         layout.addWidget(self.name_label)
@@ -196,9 +266,9 @@ class ProductCard(QDialog):
         conn = self.db.get_connection()
         if not conn:
             return
-            
+
         cursor = conn.cursor()
-        
+
         query = """
             SELECT p.name, p.price, p.description, p.image_path,
             COALESCE(SUM(si.quantity), 0) AS total_quantity
@@ -209,7 +279,7 @@ class ProductCard(QDialog):
         """
         cursor.execute(query, (product_id,))
         product = cursor.fetchone()
-        
+
         if product is None:
             self.add_button.setEnabled(False)
             self.delete_button.setEnabled(False)
@@ -217,20 +287,20 @@ class ProductCard(QDialog):
             cursor.close()
             self.db.release_connection(conn)
             return
-            
+
         name, price, description, image_path, total_quantity = product
-        
+
         self.product = {"name": name, "price": price}
         self.name_label.setText(name)
         self.price_label.setText(f"{price} ₽")
         self.description_label.setText(description or "")
-        
+
         if image_path:
             full_path = os.path.join("resources", image_path)
             self.image_label.setPixmap(load_product_pixmap(full_path).scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         else:
             self.image_label.setPixmap(load_product_pixmap(None).scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        
+
         cursor.execute(
             """
             SELECT v.variant_id, v.value, si.quantity 
@@ -240,15 +310,15 @@ class ProductCard(QDialog):
             ORDER BY v.variant_id
             """, (product_id,)
         )
-        
+
         self.size_combo.clear()
         variants = cursor.fetchall()
         for variant_id, value, quantity in variants:
             self.size_combo.addItem(f"{value} (В наличии: {quantity})", (variant_id, quantity))
-            
+
         cursor.close()
         self.db.release_connection(conn)
-        
+
         self.on_variant_changed()
 
     def load_image(self):
@@ -257,22 +327,22 @@ class ProductCard(QDialog):
         )
         if not file_path:
             return
-            
+
         if QPixmap(file_path).isNull():
             QMessageBox.warning(self, "Изображение", "Файл не является изображением")
             return
-            
+
         base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
         target = Path(base) / "images" / (uuid.uuid4().hex + Path(file_path).suffix)
-        
+
         conn = self.db.get_connection()
         if not conn:
             return
-            
+
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(file_path, target)
-            
+
             cursor = conn.cursor()
             cursor.execute(
                 "UPDATE products SET image_path = %s WHERE product_id = %s",
@@ -291,7 +361,7 @@ class ProductCard(QDialog):
             return
         finally:
             self.db.release_connection(conn)
-            
+
         self.image_label.setPixmap(QPixmap(str(target)).scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def delete_product(self):
@@ -308,7 +378,7 @@ class ProductCard(QDialog):
 
         try:
             cursor = conn.cursor()
-            
+
             cursor.execute("SELECT 1 FROM order_items WHERE product_id = %s LIMIT 1", (self.product_id,))
             if cursor.fetchone():
                 QMessageBox.critical(self, "Ошибка", "Товар нельзя удалить: он есть в заказах")
@@ -317,9 +387,9 @@ class ProductCard(QDialog):
             cursor.execute("DELETE FROM stock_items WHERE product_id = %s", (self.product_id,))
             cursor.execute("DELETE FROM products WHERE product_id = %s", (self.product_id,))
             conn.commit()
-            
+
             QMessageBox.information(self, "Успех", "Товар удалён")
-            
+
             if self.parent():
                 self.parent().load_products()
             self.accept()
@@ -333,12 +403,12 @@ class ProductCard(QDialog):
     def on_variant_changed(self, index=0):
         selected = self.size_combo.currentData()
         available = max(0, int(selected[1])) if selected else 0
-        
+
         if available > 0:
             self.quantity_spin.setRange(1, available)
         else:
             self.quantity_spin.setRange(0, 0)
-            
+
         self.add_button.setEnabled(available > 0)
 
     def add_selected_to_cart(self):
@@ -351,7 +421,7 @@ class ProductCard(QDialog):
         if not selected or self.quantity_spin.value() <= 0:
             QMessageBox.warning(self, "Остаток", "Нет доступного остатка")
             return
-            
+
         variant_id = selected[0]
         quantity = self.quantity_spin.value()
         name = self.product.get("name", "Неизвестно")
@@ -361,6 +431,7 @@ class ProductCard(QDialog):
         if main_window and hasattr(main_window, "add_to_cart"):
             main_window.add_to_cart(product_id, variant_id, name, quantity, price)
             self.accept()
+
 
 class OrderDetailsDialog(QDialog):
     def __init__(self, order_id, parent=None):
@@ -375,14 +446,14 @@ class OrderDetailsDialog(QDialog):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
+
         self.details_table = QTableWidget()
         self.details_table.setColumnCount(4)
         self.details_table.setHorizontalHeaderLabels(["Наименование", "Количество", "Цена", "Сумма"])
         self.details_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.details_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.details_table)
-        
+
         self.total_label = QLabel("Итого: 0 ₽")
         self.total_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2E8B57; margin-top: 10px;")
         layout.addWidget(self.total_label)
@@ -390,11 +461,11 @@ class OrderDetailsDialog(QDialog):
     def load_order_details(self, order_id):
         if not order_id or not self.db:
             return
-            
+
         conn = self.db.get_connection()
         if not conn:
             return
-            
+
         try:
             cursor = conn.cursor()
             query = """
@@ -406,14 +477,14 @@ class OrderDetailsDialog(QDialog):
             """
             cursor.execute(query, (order_id,))
             items = cursor.fetchall()
-            
+
             self.details_table.setRowCount(len(items))
             for row, item in enumerate(items):
                 self.details_table.setItem(row, 0, QTableWidgetItem(item[0]))
                 self.details_table.setItem(row, 1, QTableWidgetItem(str(item[1])))
                 self.details_table.setItem(row, 2, QTableWidgetItem(str(item[2])))
                 self.details_table.setItem(row, 3, QTableWidgetItem(str(item[3])))
-                
+
             cursor.close()
         except Exception as e:
             print(f"Ошибка загрузки состава: {e}")
@@ -423,11 +494,11 @@ class OrderDetailsDialog(QDialog):
     def load_total(self, order_id):
         if not order_id or not self.db:
             return
-            
+
         conn = self.db.get_connection()
         if not conn:
             return
-            
+
         try:
             cursor = conn.cursor()
             query = "SELECT COALESCE(SUM(quantity * price), 0) AS total FROM order_items WHERE order_id = %s"
@@ -440,29 +511,30 @@ class OrderDetailsDialog(QDialog):
         finally:
             self.db.release_connection(conn)
 
+
 class ValidationDialog(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Тест валидации ввода")
         self.resize(350, 300)
-        
+
         layout = QFormLayout()
-        
+
         self.quantity_input = QLineEdit()
         self.price_input = QLineEdit()
         self.name_input = QLineEdit()
         self.date_input = QLineEdit()
         self.date_input.setPlaceholderText("ДД.ММ.ГГГГ")
-        
+
         layout.addRow("Количество:", self.quantity_input)
         layout.addRow("Цена:", self.price_input)
         layout.addRow("Наименование:", self.name_input)
         layout.addRow("Дата:", self.date_input)
-        
+
         btn = QPushButton("Проверить")
         btn.clicked.connect(self.check_inputs)
         layout.addRow(btn)
-        
+
         self.setLayout(layout)
 
     def check_inputs(self):
@@ -497,8 +569,9 @@ class ValidationDialog(QDialog):
         except ValueError:
             QMessageBox.critical(self, "Ошибка", "Введите дату в формате ДД.ММ.ГГГГ")
             return
-            
+
         QMessageBox.information(self, "Успех", "Все данные корректны!")
+
 
 class MainWindow(QMainWindow):
     def __init__(self, db, role_id=None, full_name="Гость", user_id=None):
@@ -507,7 +580,7 @@ class MainWindow(QMainWindow):
         self.role_id = role_id
         self.full_name = full_name
         self.user_id = user_id
-        
+
         self.setWindowTitle("Мир аудиотехники — Каталог")
         self.resize(850, 650)
         self.setWindowIcon(QIcon("resources/icon.ico"))
@@ -523,14 +596,14 @@ class MainWindow(QMainWindow):
         header_widget = QWidget()
         header_widget.setStyleSheet("background-color: #D2F6E7; border-radius: 10px;")
         header_layout = QHBoxLayout(header_widget)
-        
+
         logo = QLabel()
         pixmap = QPixmap("resources/logo.png").scaledToWidth(150, Qt.SmoothTransformation)
         logo.setPixmap(pixmap)
         logo.setScaledContents(False)
         logo.setStyleSheet("background-color: transparent;")
         header_layout.addWidget(logo)
-        
+
         header_layout.addStretch()
 
         self.back_button = QPushButton("Назад")
@@ -542,7 +615,7 @@ class MainWindow(QMainWindow):
         if self.role_id == 1: role_name = "Администратор"
         elif self.role_id == 2: role_name = "Менеджер"
         elif self.role_id == 3: role_name = "Клиент"
-            
+
         self.name_label = QLabel(f"ФИО: {self.full_name} ({role_name})")
         self.name_label.setStyleSheet("font-weight: bold; font-size: 14px; background-color: transparent;")
         header_layout.addWidget(self.name_label)
@@ -558,7 +631,8 @@ class MainWindow(QMainWindow):
         self.order_button = QPushButton("Корзина")
         self.manager_button = QPushButton("Заказы (менеджер)")
         self.admin_button = QPushButton("Админ-панель")
-        
+        self.add_order_button = QPushButton("Добавить заказ")
+
         self.test_val_button = QPushButton("Тест валидации")
         self.test_val_button.setStyleSheet("background-color: #FF8C00; color: white; padding: 5px; border-radius: 5px;")
         self.test_val_button.clicked.connect(self.open_validation_test)
@@ -567,16 +641,19 @@ class MainWindow(QMainWindow):
         self.order_button.setStyleSheet(button_style)
         self.manager_button.setStyleSheet(button_style)
         self.admin_button.setStyleSheet(button_style)
+        self.add_order_button.setStyleSheet(button_style)
 
         self.order_button.clicked.connect(lambda: self.switch_page(2))
         self.manager_button.clicked.connect(lambda: self.switch_page(2))
         self.admin_button.clicked.connect(lambda: self.switch_page(2))
+        self.add_order_button.clicked.connect(self.open_add_order_dialog)
 
         button_layout.addStretch()
         button_layout.addWidget(self.test_val_button)
         button_layout.addWidget(self.order_button)
         button_layout.addWidget(self.manager_button)
         button_layout.addWidget(self.admin_button)
+        button_layout.addWidget(self.add_order_button)
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
 
@@ -584,7 +661,7 @@ class MainWindow(QMainWindow):
 
         self.catalog_page = QWidget()
         catalog_layout = QVBoxLayout(self.catalog_page)
-        
+
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Поиск по названию или описанию...")
@@ -618,7 +695,7 @@ class MainWindow(QMainWindow):
 
         self.orders_page = QWidget()
         orders_layout = QVBoxLayout(self.orders_page)
-        
+
         self.orders_table = QTableWidget()
         self.orders_table.setColumnCount(4)
         self.orders_table.setHorizontalHeaderLabels(["Дата", "ФИО клиента", "Сумма", "Статус"])
@@ -627,7 +704,7 @@ class MainWindow(QMainWindow):
         self.orders_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.orders_table.cellClicked.connect(self.on_order_click)
         orders_layout.addWidget(self.orders_table)
-        
+
         self.cart_table = QTableWidget()
         self.cart_table.setColumnCount(5)
         self.cart_table.setHorizontalHeaderLabels(["Наименование", "Количество", "Цена", "Сумма", "ID"])
@@ -635,11 +712,11 @@ class MainWindow(QMainWindow):
         self.cart_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.cart_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         orders_layout.addWidget(self.cart_table)
-        
+
         self.total_label = QLabel("Итого: 0 ₽")
         self.total_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #2E8B57; margin-top: 10px;")
         orders_layout.addWidget(self.total_label)
-        
+
         qty_layout = QHBoxLayout()
         self.qty_label = QLabel("Новое количество:")
         qty_layout.addWidget(self.qty_label)
@@ -647,13 +724,13 @@ class MainWindow(QMainWindow):
         self.qty_change_spin.setMinimum(1)
         self.qty_change_spin.setMaximum(999)
         qty_layout.addWidget(self.qty_change_spin)
-        
+
         self.change_qty_btn = QPushButton("Изменить количество")
         self.change_qty_btn.setStyleSheet("background-color: #70B2AF; color: white; padding: 10px; border-radius: 5px; font-weight: bold;")
         self.change_qty_btn.clicked.connect(self.change_quantity)
         qty_layout.addWidget(self.change_qty_btn)
         orders_layout.addLayout(qty_layout)
-        
+
         self.remove_btn = QPushButton("Удалить выбранное")
         self.remove_btn.setStyleSheet("background-color: #ff8080; padding: 10px; border-radius: 5px; font-weight: bold;")
         self.remove_btn.clicked.connect(self.remove_from_cart)
@@ -687,7 +764,12 @@ class MainWindow(QMainWindow):
             QMainWindow { background-color: #FFFFFF; font-family: Calibri; }
             QLabel { color: #000000; }
         """)
-        
+
+    def open_add_order_dialog(self):
+        dialog = AddOrderDialog(self.db, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and self.role_id in (1, 2):
+            self.load_orders()
+
     def open_validation_test(self):
         dialog = ValidationDialog()
         dialog.exec()
@@ -752,7 +834,7 @@ class MainWindow(QMainWindow):
             """
             cursor.execute(query)
             orders = cursor.fetchall()
-            
+
             self.orders_table.setRowCount(len(orders))
             for row, order in enumerate(orders):
                 date_item = QTableWidgetItem(str(order[1]))
@@ -778,8 +860,9 @@ class MainWindow(QMainWindow):
         if self.role_id == 1:
             self.admin_button.show()
             self.manager_button.show()
+            self.add_order_button.show()
             self.order_button.hide()
-            
+
             self.orders_table.show()
             self.cart_table.hide()
             self.total_label.hide()
@@ -790,12 +873,13 @@ class MainWindow(QMainWindow):
             self.status_label.hide()
             self.status_combo.hide()
             self.checkout_btn.hide()
-            
+
         elif self.role_id == 2:
             self.admin_button.hide()
             self.manager_button.show()
+            self.add_order_button.show()
             self.order_button.hide()
-            
+
             self.orders_table.show()
             self.cart_table.hide()
             self.total_label.hide()
@@ -806,12 +890,13 @@ class MainWindow(QMainWindow):
             self.status_label.hide()
             self.status_combo.hide()
             self.checkout_btn.hide()
-            
+
         elif self.role_id == 3:
             self.admin_button.hide()
             self.manager_button.hide()
+            self.add_order_button.hide()
             self.order_button.show()
-            
+
             self.orders_table.hide()
             self.cart_table.show()
             self.total_label.show()
@@ -822,12 +907,13 @@ class MainWindow(QMainWindow):
             self.status_label.show()
             self.status_combo.show()
             self.checkout_btn.show()
-            
+
         else:
             self.admin_button.hide()
             self.manager_button.hide()
+            self.add_order_button.hide()
             self.order_button.hide()
-            
+
             self.orders_table.hide()
             self.cart_table.hide()
             self.total_label.hide()
@@ -859,7 +945,7 @@ class MainWindow(QMainWindow):
         identity = QTableWidgetItem(str(product_id))
         identity.setData(Qt.ItemDataRole.UserRole, variant_id)
         self.cart_table.setItem(row, 4, identity)
-        
+
         self.update_total()
         self.switch_page(2)
 
@@ -883,13 +969,13 @@ class MainWindow(QMainWindow):
         if self.cart_table.rowCount() == 0:
             self.total_label.setText("Итого: 0 ₽")
             return
-            
+
         total = Decimal("0")
         for row in range(self.cart_table.rowCount()):
             item = self.cart_table.item(row, 3)
             if item:
                 total += Decimal(item.text())
-                
+
         self.total_label.setText(f"Итого: {total} ₽")
 
     def confirm_order(self):
@@ -918,7 +1004,7 @@ class MainWindow(QMainWindow):
                     quantity_item = self.cart_table.item(row, 1)
                     if any(x is None for x in (identity, quantity_item)):
                         raise ValueError("В позиции отсутствует ID или количество")
-                    
+
                     product_id = int(identity.text())
                     variant_id = int(identity.data(Qt.ItemDataRole.UserRole))
                     quantity = int(quantity_item.text())
@@ -998,6 +1084,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         event.accept()
+
 
 if __name__ == "__main__":
     from login_window import LoginWindow
