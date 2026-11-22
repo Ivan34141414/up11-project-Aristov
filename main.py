@@ -364,6 +364,9 @@ class ProductCard(QDialog):
         self.delete_button.setStyleSheet("background-color: #ff8080; color: white; font-weight: bold; padding: 8px; border-radius: 5px;")
         self.delete_button.clicked.connect(self.delete_product)
 
+        if self.parent() and getattr(self.parent(), 'role_id', None) != 1:
+            self.delete_button.hide()
+
         layout.addWidget(self.image_label)
         layout.addWidget(self.load_img_btn)
         layout.addWidget(self.name_label)

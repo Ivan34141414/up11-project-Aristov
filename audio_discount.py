@@ -1,4 +1,4 @@
-import psycopg2
+import psycopg
 
 DISCOUNT_RATE = 0.75
 
@@ -8,7 +8,7 @@ def calculate_price_audio(item_id, base_price):
     Применяет скидку 25%, если за последний месяц не было заказов.
     """
     try:
-        conn = psycopg2.connect(
+        conn = psycopg.connect(
             host="localhost",
             port=5432,
             database="audio_db",
@@ -37,7 +37,7 @@ def calculate_price_audio(item_id, base_price):
         else:
             return float(base_price)
             
-    except psycopg2.Error as e:
+    except psycopg.Error as e:
         print(f"Ошибка БД: {e}")
         return None
 
