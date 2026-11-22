@@ -9,20 +9,19 @@ from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout,
                                QWidget, QScrollArea, QPushButton, QMessageBox, QComboBox,
                                QLineEdit, QDialog, QFormLayout, QSpinBox, QFileDialog,
-                               QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QStackedWidget)
+                               QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, 
+                               QStackedWidget, QDateEdit)
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtCore import Qt, QStandardPaths
+from PySide6.QtCore import Qt, QStandardPaths, QDate
 from database import Database
 import psycopg
 
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(message)s')
 logging.getLogger("psycopg.pool").setLevel(logging.ERROR)
 
-
 def resource_path(relative):
     path = os.path.abspath(relative)
     return path
-
 
 def load_product_pixmap(image_path, fallback="resources/picture.png"):
     pixmap = QPixmap(resource_path(image_path)) if image_path else QPixmap()
@@ -33,12 +32,10 @@ def load_product_pixmap(image_path, fallback="resources/picture.png"):
         pixmap.fill(Qt.GlobalColor.lightGray)
     return pixmap
 
-
 def calculate_discount(old_price, new_price):
     if old_price == 0:
         return 0
     return (old_price - new_price) / old_price * 100
-
 
 def create_card(product, db, main_window):
     card = QWidget()
@@ -327,6 +324,108 @@ class AddOrderDialog(QDialog):
         except Exception as e:
             conn.rollback()
             QMessageBox.critical(self, "Ошибка", f"Ошибка сохранения: {e}")
+        finally:
+            self.db.release_connection(conn)
+
+
+class EditOrderDialog(QDialog):
+    def __init__(self, db, order_id, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.order_id = order_id
+        self.setWindowTitle("Редактировать заказ")
+        self.resize(300, 250)
+        self.setup_ui()
+        self.load_order_data()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        self.date_edit = QDateEdit()
+        self.date_edit.setCalendarPopup(True)
+
+        self.client_combo = QComboBox()
+        conn = self.db.get_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT user_id, CONCAT_WS(' ', last_name, first_name) FROM users WHERE role_id = 3")
+                for user in cursor.fetchall():
+                    self.client_combo.addItem(user[1], user[0])
+                cursor.close()
+            finally:
+                self.db.release_connection(conn)
+
+        self.status_combo = QComboBox()
+        self.status_combo.addItems(["Новый", "В обработке", "Завершён"])
+
+        layout.addWidget(QLabel("Дата:"))
+        layout.addWidget(self.date_edit)
+        layout.addWidget(QLabel("Клиент:"))
+        layout.addWidget(self.client_combo)
+        layout.addWidget(QLabel("Статус:"))
+        layout.addWidget(self.status_combo)
+
+        self.save_button = QPushButton("Сохранить")
+        self.save_button.clicked.connect(self.save_order)
+        layout.addWidget(self.save_button)
+
+        self.cancel_button = QPushButton("Отмена")
+        self.cancel_button.clicked.connect(self.reject)
+        layout.addWidget(self.cancel_button)
+
+    def load_order_data(self):
+        if not self.order_id:
+            return
+        conn = self.db.get_connection()
+        if not conn:
+            return
+        try:
+            cursor = conn.cursor()
+            query = "SELECT order_date, user_id, status FROM orders WHERE order_id = %s"
+            cursor.execute(query, (self.order_id,))
+            order = cursor.fetchone()
+
+            if order is None:
+                QMessageBox.critical(self, "Ошибка", "Заказ не найден")
+                self.reject()
+                return
+
+            qdate = QDate(order[0].year, order[0].month, order[0].day)
+            self.date_edit.setDate(qdate)
+
+            index = self.client_combo.findData(order[1])
+            if index >= 0:
+                self.client_combo.setCurrentIndex(index)
+
+            self.status_combo.setCurrentText(order[2] or "Новый")
+            cursor.close()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки данных: {e}")
+            self.reject()
+        finally:
+            self.db.release_connection(conn)
+
+    def save_order(self):
+        conn = self.db.get_connection()
+        if not conn:
+            return
+        try:
+            user_id = self.client_combo.currentData()
+            status = self.status_combo.currentText()
+            date = self.date_edit.date().toString("yyyy-MM-dd")
+            
+            cursor = conn.cursor()
+            query = "UPDATE orders SET order_date = %s, user_id = %s, status = %s WHERE order_id = %s"
+            cursor.execute(query, (date, user_id, status, self.order_id))
+            conn.commit()
+            cursor.close()
+            
+            QMessageBox.information(self, "Успех", "Заказ обновлён")
+            self.accept()
+        except Exception as e:
+            conn.rollback()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
         finally:
             self.db.release_connection(conn)
 
@@ -743,6 +842,12 @@ class MainWindow(QMainWindow):
         self.orders_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.orders_table.cellClicked.connect(self.on_order_click)
         orders_layout.addWidget(self.orders_table)
+        
+        self.edit_order_btn = QPushButton("Редактировать заказ")
+        self.edit_order_btn.setStyleSheet("background-color: #70B2AF; color: white; padding: 10px; border-radius: 5px; font-weight: bold;")
+        self.edit_order_btn.clicked.connect(self.open_edit_order_dialog)
+        orders_layout.addWidget(self.edit_order_btn)
+
         self.cart_table = QTableWidget()
         self.cart_table.setColumnCount(5)
         self.cart_table.setHorizontalHeaderLabels(["Наименование", "Количество", "Цена", "Сумма", "ID"])
@@ -794,6 +899,19 @@ class MainWindow(QMainWindow):
         dialog = AddOrderDialog(self.db, self)
         if dialog.exec() == QDialog.DialogCode.Accepted and self.role_id in (1, 2):
             self.load_orders()
+
+    def open_edit_order_dialog(self):
+        row = self.orders_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Ошибка", "Выберите заказ")
+            return
+        item = self.orders_table.item(row, 0)
+        if item:
+            order_id = item.data(Qt.ItemDataRole.UserRole)
+            if order_id:
+                dialog = EditOrderDialog(self.db, order_id, self)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    self.load_orders()
 
     def open_validation_test(self):
         dialog = ValidationDialog()
@@ -872,22 +990,26 @@ class MainWindow(QMainWindow):
     def setup_role_interface(self):
         if self.role_id == 1:
             self.admin_button.show(); self.manager_button.show(); self.add_order_button.show(); self.order_button.hide()
-            self.orders_table.show(); self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
+            self.orders_table.show(); self.edit_order_btn.show()
+            self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
             self.qty_change_spin.hide(); self.change_qty_btn.hide(); self.remove_btn.hide()
             self.status_label.hide(); self.status_combo.hide(); self.checkout_btn.hide()
         elif self.role_id == 2:
             self.admin_button.hide(); self.manager_button.show(); self.add_order_button.show(); self.order_button.hide()
-            self.orders_table.show(); self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
+            self.orders_table.show(); self.edit_order_btn.hide()
+            self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
             self.qty_change_spin.hide(); self.change_qty_btn.hide(); self.remove_btn.hide()
             self.status_label.hide(); self.status_combo.hide(); self.checkout_btn.hide()
         elif self.role_id == 3:
             self.admin_button.hide(); self.manager_button.hide(); self.add_order_button.hide(); self.order_button.show()
-            self.orders_table.hide(); self.cart_table.show(); self.total_label.show(); self.qty_label.show()
+            self.orders_table.hide(); self.edit_order_btn.hide()
+            self.cart_table.show(); self.total_label.show(); self.qty_label.show()
             self.qty_change_spin.show(); self.change_qty_btn.show(); self.remove_btn.show()
             self.status_label.show(); self.status_combo.show(); self.checkout_btn.show()
         else:
             self.admin_button.hide(); self.manager_button.hide(); self.add_order_button.hide(); self.order_button.hide()
-            self.orders_table.hide(); self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
+            self.orders_table.hide(); self.edit_order_btn.hide()
+            self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
             self.qty_change_spin.hide(); self.change_qty_btn.hide(); self.remove_btn.hide()
             self.status_label.hide(); self.status_combo.hide(); self.checkout_btn.hide()
 
