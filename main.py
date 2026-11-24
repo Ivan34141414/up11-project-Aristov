@@ -334,7 +334,7 @@ class EditOrderDialog(QDialog):
         self.db = db
         self.order_id = order_id
         self.setWindowTitle("Редактировать заказ")
-        self.resize(300, 250)
+        self.resize(600, 550)
         self.setup_ui()
         self.load_order_data()
 
@@ -361,14 +361,35 @@ class EditOrderDialog(QDialog):
 
         layout.addWidget(QLabel("Дата:"))
         layout.addWidget(self.date_edit)
+        
+        self.save_date_btn = QPushButton("Сохранить дату")
+        self.save_date_btn.clicked.connect(self.save_date)
+        layout.addWidget(self.save_date_btn)
+
         layout.addWidget(QLabel("Клиент:"))
         layout.addWidget(self.client_combo)
         layout.addWidget(QLabel("Статус:"))
         layout.addWidget(self.status_combo)
 
-        self.save_button = QPushButton("Сохранить")
-        self.save_button.clicked.connect(self.save_order)
-        layout.addWidget(self.save_button)
+        self.save_order_btn = QPushButton("Сохранить клиента и статус")
+        self.save_order_btn.clicked.connect(self.save_order)
+        layout.addWidget(self.save_order_btn)
+
+        layout.addWidget(QLabel("Состав заказа:"))
+        self.items_table = QTableWidget()
+        self.items_table.setColumnCount(4)
+        self.items_table.setHorizontalHeaderLabels(["Товар", "Кол-во", "Цена", "Сумма"])
+        self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.items_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.items_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        layout.addWidget(self.items_table)
+
+        self.delete_item_btn = QPushButton("Удалить позицию")
+        self.delete_item_btn.clicked.connect(self.remove_item)
+        layout.addWidget(self.delete_item_btn)
+
+        self.total_label = QLabel("Итого: 0 ₽")
+        layout.addWidget(self.total_label)
 
         self.cancel_button = QPushButton("Отмена")
         self.cancel_button.clicked.connect(self.reject)
@@ -400,29 +421,107 @@ class EditOrderDialog(QDialog):
 
             self.status_combo.setCurrentText(order[2] or "Новый")
             cursor.close()
+            self.load_items()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки данных: {e}")
             self.reject()
         finally:
             self.db.release_connection(conn)
 
+    def load_items(self):
+        conn = self.db.get_connection()
+        if not conn: return
+        try:
+            cursor = conn.cursor()
+            query = """
+                SELECT oi.order_item_id, COALESCE(p.name, 'Товар удален'), oi.quantity, oi.price, (oi.quantity * oi.price)
+                FROM order_items oi
+                LEFT JOIN products p ON oi.product_id = p.product_id
+                WHERE oi.order_id = %s
+            """
+            cursor.execute(query, (self.order_id,))
+            items = cursor.fetchall()
+            self.items_table.setRowCount(len(items))
+            for row, item in enumerate(items):
+                name_item = QTableWidgetItem(item[1])
+                name_item.setData(Qt.ItemDataRole.UserRole, item[0])
+                self.items_table.setItem(row, 0, name_item)
+                self.items_table.setItem(row, 1, QTableWidgetItem(str(item[2])))
+                self.items_table.setItem(row, 2, QTableWidgetItem(str(item[3])))
+                self.items_table.setItem(row, 3, QTableWidgetItem(str(item[4])))
+            cursor.close()
+            self.load_total()
+        except Exception as e:
+            print(f"Ошибка загрузки состава: {e}")
+        finally:
+            self.db.release_connection(conn)
+
+    def load_total(self):
+        conn = self.db.get_connection()
+        if not conn: return
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COALESCE(SUM(quantity * price), 0) FROM order_items WHERE order_id = %s", (self.order_id,))
+            total = cursor.fetchone()[0]
+            self.total_label.setText(f"Итого: {total} ₽")
+            cursor.close()
+        except Exception as e:
+            print(f"Ошибка подсчета суммы: {e}")
+        finally:
+            self.db.release_connection(conn)
+
+    def save_date(self):
+        conn = self.db.get_connection()
+        if not conn: return
+        try:
+            new_date = self.date_edit.date().toString("yyyy-MM-dd")
+            cursor = conn.cursor()
+            cursor.execute("UPDATE orders SET order_date = %s WHERE order_id = %s", (new_date, self.order_id))
+            conn.commit()
+            cursor.close()
+            QMessageBox.information(self, "Успех", "Дата обновлена")
+        except Exception as e:
+            conn.rollback()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
+        finally:
+            self.db.release_connection(conn)
+
     def save_order(self):
         conn = self.db.get_connection()
-        if not conn:
-            return
+        if not conn: return
         try:
             user_id = self.client_combo.currentData()
             status = self.status_combo.currentText()
-            date = self.date_edit.date().toString("yyyy-MM-dd")
-            
             cursor = conn.cursor()
-            query = "UPDATE orders SET order_date = %s, user_id = %s, status = %s WHERE order_id = %s"
-            cursor.execute(query, (date, user_id, status, self.order_id))
+            query = "UPDATE orders SET user_id = %s, status = %s WHERE order_id = %s"
+            cursor.execute(query, (user_id, status, self.order_id))
             conn.commit()
             cursor.close()
-            
-            QMessageBox.information(self, "Успех", "Заказ обновлён")
-            self.accept()
+            QMessageBox.information(self, "Успех", "Клиент и статус обновлены")
+        except Exception as e:
+            conn.rollback()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
+        finally:
+            self.db.release_connection(conn)
+
+    def remove_item(self):
+        row = self.items_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Ошибка", "Выберите позицию для удаления")
+            return
+        item = self.items_table.item(row, 0)
+        order_item_id = item.data(Qt.ItemDataRole.UserRole)
+        if not order_item_id: return
+
+        conn = self.db.get_connection()
+        if not conn: return
+        try:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM order_items WHERE order_item_id = %s", (order_item_id,))
+            conn.commit()
+            cursor.close()
+            QMessageBox.information(self, "Успех", "Позиция удалена")
+            self.load_items()
         except Exception as e:
             conn.rollback()
             QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
