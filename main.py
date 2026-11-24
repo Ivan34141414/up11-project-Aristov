@@ -1042,7 +1042,7 @@ class MainWindow(QMainWindow):
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM order_items WHERE order_id = %s", (order_id,))
                 cursor.execute("DELETE FROM orders WHERE order_id = %s", (order_id,))
-                conn.commit()   
+                conn.commit()
                 cursor.close()
                 QMessageBox.information(self, "Успех", "Заказ удалён")
                 self.load_orders()
