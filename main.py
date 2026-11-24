@@ -947,6 +947,11 @@ class MainWindow(QMainWindow):
         self.edit_order_btn.clicked.connect(self.open_edit_order_dialog)
         orders_layout.addWidget(self.edit_order_btn)
 
+        self.delete_order_btn = QPushButton("Удалить заказ")
+        self.delete_order_btn.setStyleSheet("background-color: #ff8080; color: white; padding: 10px; border-radius: 5px; font-weight: bold;")
+        self.delete_order_btn.clicked.connect(self.delete_order)
+        orders_layout.addWidget(self.delete_order_btn)
+
         self.cart_table = QTableWidget()
         self.cart_table.setColumnCount(5)
         self.cart_table.setHorizontalHeaderLabels(["Наименование", "Количество", "Цена", "Сумма", "ID"])
@@ -1011,6 +1016,41 @@ class MainWindow(QMainWindow):
                 dialog = EditOrderDialog(self.db, order_id, self)
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     self.load_orders()
+
+    def delete_order(self):
+        row = self.orders_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Ошибка", "Выберите заказ")
+            return
+        item = self.orders_table.item(row, 0)
+        if item:
+            order_id = item.data(Qt.ItemDataRole.UserRole)
+            if not order_id:
+                QMessageBox.warning(self, "Ошибка", "Выберите заказ")
+                return
+
+            reply = QMessageBox.question(
+                self, "Удаление", "Вы уверены, что хотите удалить заказ?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                return
+
+            conn = self.db.get_connection()
+            if not conn: return
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM order_items WHERE order_id = %s", (order_id,))
+                cursor.execute("DELETE FROM orders WHERE order_id = %s", (order_id,))
+                conn.commit()   
+                cursor.close()
+                QMessageBox.information(self, "Успех", "Заказ удалён")
+                self.load_orders()
+            except Exception as e:
+                conn.rollback()
+                QMessageBox.critical(self, "Ошибка", f"Ошибка: {e}")
+            finally:
+                self.db.release_connection(conn)
 
     def open_validation_test(self):
         dialog = ValidationDialog()
@@ -1089,25 +1129,25 @@ class MainWindow(QMainWindow):
     def setup_role_interface(self):
         if self.role_id == 1:
             self.admin_button.show(); self.manager_button.show(); self.add_order_button.show(); self.order_button.hide()
-            self.orders_table.show(); self.edit_order_btn.show()
+            self.orders_table.show(); self.edit_order_btn.show(); self.delete_order_btn.show()
             self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
             self.qty_change_spin.hide(); self.change_qty_btn.hide(); self.remove_btn.hide()
             self.status_label.hide(); self.status_combo.hide(); self.checkout_btn.hide()
         elif self.role_id == 2:
             self.admin_button.hide(); self.manager_button.show(); self.add_order_button.show(); self.order_button.hide()
-            self.orders_table.show(); self.edit_order_btn.hide()
+            self.orders_table.show(); self.edit_order_btn.hide(); self.delete_order_btn.hide()
             self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
             self.qty_change_spin.hide(); self.change_qty_btn.hide(); self.remove_btn.hide()
             self.status_label.hide(); self.status_combo.hide(); self.checkout_btn.hide()
         elif self.role_id == 3:
             self.admin_button.hide(); self.manager_button.hide(); self.add_order_button.hide(); self.order_button.show()
-            self.orders_table.hide(); self.edit_order_btn.hide()
+            self.orders_table.hide(); self.edit_order_btn.hide(); self.delete_order_btn.hide()
             self.cart_table.show(); self.total_label.show(); self.qty_label.show()
             self.qty_change_spin.show(); self.change_qty_btn.show(); self.remove_btn.show()
             self.status_label.show(); self.status_combo.show(); self.checkout_btn.show()
         else:
             self.admin_button.hide(); self.manager_button.hide(); self.add_order_button.hide(); self.order_button.hide()
-            self.orders_table.hide(); self.edit_order_btn.hide()
+            self.orders_table.hide(); self.edit_order_btn.hide(); self.delete_order_btn.hide()
             self.cart_table.hide(); self.total_label.hide(); self.qty_label.hide()
             self.qty_change_spin.hide(); self.change_qty_btn.hide(); self.remove_btn.hide()
             self.status_label.hide(); self.status_combo.hide(); self.checkout_btn.hide()
